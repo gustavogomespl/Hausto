@@ -13,8 +13,14 @@ _INJECAO = re.compile(
     r"esque[cç]a (tudo|as instru)|developer mode|jailbreak",
     re.IGNORECASE,
 )
-# pt-BR (2.173,51), ponto decimal cru do JSON (2173.51) ou inteiro/vírgula (2173 / 2173,5)
-_NUMERO = re.compile(r"(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+\.\d{1,2}(?!\d)|\d+(?:,\d{1,2})?)(\s*%)?")
+# pt-BR (2.173,51), ponto decimal cru do JSON (2173.51) ou inteiro/vírgula.
+# O sinal pode vir antes ou depois de R$: nunca transformar dívida em sobra.
+_NUMERO = re.compile(
+    r"(?P<sinal_antes>[+\-−])?\s*(?P<moeda>R\$\s*)?"
+    r"(?P<sinal_depois>[+\-−])?\s*"
+    r"(?P<numero>\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+\.\d{1,2}(?!\d)|\d+(?:,\d{1,2})?)"
+    r"(?P<percentual>\s*%)?"
+)
 
 RESPOSTA_INJECAO = (
     "Posso te ajudar com a sua fatura e o seu saldo. Não consigo mudar as minhas regras. "
@@ -30,7 +36,7 @@ def _valores(obj: Any, saida: set[float]) -> None:
     if isinstance(obj, bool):
         return
     if isinstance(obj, int | float):
-        saida.add(round(abs(float(obj)), 2))
+        saida.add(float(obj))
     elif isinstance(obj, dict):
         for v in obj.values():
             _valores(v, saida)
@@ -41,32 +47,50 @@ def _valores(obj: Any, saida: set[float]) -> None:
         try:
             _valores(json.loads(obj), saida)
         except (ValueError, TypeError):
-            for m in re.findall(r"-?\d+(?:\.\d+)?", obj):
-                saida.add(round(abs(float(m)), 2))
+            for m in _NUMERO.finditer(obj):
+                if not (m.group("sinal_antes") and m.group("sinal_depois")):
+                    saida.add(_valor_encontrado(m))
+
+
+def _valor_encontrado(m: re.Match[str]) -> float:
+    bruto = m.group("numero")
+    valor = float(bruto) if re.fullmatch(r"\d+\.\d{1,2}", bruto) else float(bruto.replace(".", "").replace(",", "."))
+    sinal = m.group("sinal_antes") or m.group("sinal_depois")
+    return -valor if sinal in ("-", "−") else valor
 
 
 def numeros_das_tools(saidas_tools: list[Any]) -> set[float]:
+    """Valores com seu sinal original; conversão de taxa não gera fonte monetária."""
     valores: set[float] = set()
     for s in saidas_tools:
         _valores(s, valores)
-    # percentuais aparecem na resposta como 14% (vindo de 0.14 nas tools)
-    valores |= {round(v * 100, 2) for v in valores if v < 1}
     return valores
 
 
 def numeros_sem_fonte(resposta: str, saidas_tools: list[Any]) -> list[str]:
-    """Números em R$ ou % na resposta que não vieram de nenhuma tool desta conversa."""
+    """Confere valor e sinal, não a associação semântica entre frase e campo.
+
+    A revisão estruturada deve validar qual saldo, custo ou déficit cada frase
+    representa. Encontrar o mesmo número em outra fonte não prova essa relação.
+    """
     fontes = numeros_das_tools(saidas_tools)
+    # Só percentuais podem usar 14% como apresentação de uma taxa 0.14.
+    fontes_percentuais = fontes | {round(v * 100, 2) for v in fontes if abs(v) < 1}
     suspeitos = []
     for m in _NUMERO.finditer(resposta):
-        bruto, pct = m.group(1), m.group(2)
-        eh_dinheiro = m.group(0).startswith("R$")
+        pct = m.group("percentual")
+        eh_dinheiro = m.group("moeda") is not None
         if not (eh_dinheiro or pct):
             continue  # datas, dias e contagens pequenas não são checados
-        if re.fullmatch(r"\d+\.\d{1,2}", bruto):
-            valor = float(bruto)
-        else:
-            valor = round(float(bruto.replace(".", "").replace(",", ".")), 2)
-        if not any(abs(valor - f) <= 0.011 or (not eh_dinheiro and abs(valor - round(f)) < 0.6) for f in fontes):
+        if m.group("sinal_antes") and m.group("sinal_depois"):
+            suspeitos.append(m.group(0).strip())
+            continue
+        valor = _valor_encontrado(m)
+        candidatas = fontes if eh_dinheiro else fontes_percentuais
+        if not any(
+            (valor < 0) == (f < 0)
+            and (abs(valor - f) <= 0.011 or (not eh_dinheiro and abs(valor - round(f)) < 0.6))
+            for f in candidatas
+        ):
             suspeitos.append(m.group(0).strip())
     return suspeitos

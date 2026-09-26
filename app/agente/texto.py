@@ -21,12 +21,16 @@ def resposta_padrao(ctx: ContextoCliente, c: dict[str, Any], dados_mudaram: bool
     linhas += [
         f"Sua fatura com vencimento em {venc} deve ficar em {brl(c['valor_fatura'])} ({c['fonte_fatura']}).",
         f"No vencimento a conta deve ter {brl(c['saldo_projetado_no_vencimento'])}; "
-        f"até a próxima renda você costuma gastar {brl(c['essenciais_ate_renda'])} com essenciais.",
-        f"Sobra {brl(c['disponivel_para_fatura'])} para a fatura.",
+        f"até a próxima renda, os essenciais considerados somam {brl(c['essenciais_ate_renda'])}.",
     ]
+    if c['disponivel_para_fatura'] < 0:
+        linhas.append("Os compromissos e a reserva já ultrapassam o caixa projetado.")
+    else:
+        linhas.append(f"A capacidade de caixa para a fatura é {brl(c['disponivel_para_fatura'])}.")
+    linhas.append("Esta é uma simulação com taxas e mínimo ilustrativos. As condições do seu cartão precisam ser confirmadas.")
     if c["status"] == "insuficiente":
         linhas.append(f"Não dá para pagar nem o mínimo sem apertar os essenciais: faltam {brl(c['deficit_para_o_minimo'])}.")
-        linhas.append("Podemos rever algum gasto essencial ou a reserva que você quer manter?")
+        linhas.append("Qual informação precisamos confirmar para rever essa simulação?")
         return "\n".join(linhas)
     for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"), ("minimo", "Pagar o mínimo")):
         if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
@@ -34,8 +38,8 @@ def resposta_padrao(ctx: ContextoCliente, c: dict[str, Any], dados_mudaram: bool
         ok = "cabe no seu caixa" if op[nome]["atende_restricoes"] else "aperta os essenciais"
         linhas.append(f"- {rotulo}: custo de {brl(op[nome]['custo_total'])} ({ok}).")
     linhas.append(
-        f"A opção mais barata que cabe é {c['recomendada'].replace('_', ' ')}: economia de "
-        f"{brl(c['economia_vs_minimo'])} em relação ao mínimo. Qual opção você prefere?"
+        f"Nas premissas simuladas, {c['recomendada'].replace('_', ' ')} tem o menor custo entre as opções que cabem. "
+        "Qual alternativa você quer entender melhor?"
     )
     return "\n".join(linhas)
 
@@ -51,7 +55,7 @@ def pergunta_sem_fatura(ctx: ContextoCliente) -> str:
 def pergunta_confirmacao(escolha: dict[str, Any]) -> str:
     texto = (
         f"Só para confirmar: você vai {ROTULOS[escolha['opcao']]}, {brl(escolha['valor'])}, "
-        f"com custo estimado de {brl(escolha['custo_total'])}."
+        f"com custo simulado de {brl(escolha['custo_total'])}. As condições reais do cartão ainda precisam ser confirmadas."
     )
     if not escolha["atende_restricoes"]:
         texto += " Atenção: com esse valor, falta dinheiro para os essenciais até a próxima renda."
@@ -61,7 +65,7 @@ def pergunta_confirmacao(escolha: dict[str, Any]) -> str:
 def decisao_registrada(escolha: dict[str, Any]) -> str:
     return (
         f"Pronto, registrei: {ROTULOS[escolha['opcao']]}, {brl(escolha['valor'])}. "
-        "Nenhum pagamento foi feito; é só pagar pelo app até o vencimento."
+        "Registrei apenas sua intenção na simulação. Nenhum pagamento foi feito. Confira as condições reais antes de decidir."
     )
 
 

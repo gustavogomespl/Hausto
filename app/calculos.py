@@ -172,6 +172,10 @@ def comparar_opcoes(
     valor_fatura: float | None = None,
     saldo_atual_informado: float | None = None,
     reserva_desejada: float = 0.0,
+    *,
+    despesas_antes_vencimento: float = 0.0,
+    essenciais_informados: float | None = None,
+    despesas_apos_vencimento: float = 0.0,
 ) -> dict[str, Any]:
     """Compara integral × parcial viável × mínimo respeitando as restrições confirmadas.
 
@@ -179,6 +183,9 @@ def comparar_opcoes(
     reserva que o cliente quer manter. Opção que fura a restrição é marcada `atende_restricoes=False`;
     se nenhuma atende, o status é "insuficiente" e o déficit é informado.
     Dados informados pelo cliente (fatura, saldo, reserva) substituem os estimados.
+    Essenciais informados substituem a estimativa entre vencimento e próxima renda.
+    Despesas adicionais confirmadas entram uma vez: até o vencimento reduzem o caixa;
+    depois do vencimento aumentam os essenciais. A classificação por data é feita pelo chamador.
     """
     fatura = prever_fatura(ctx)
     informada = valor_fatura is not None
@@ -190,7 +197,13 @@ def comparar_opcoes(
     caixa = float(saldo["saldo_projetado_no_vencimento"])
     if saldo_atual_informado is not None:
         caixa += saldo_atual_informado - ctx.saldo_atual
-    essenciais = float(projetar_essenciais_ate_renda(ctx)["essenciais_ate_renda"])
+    caixa -= despesas_antes_vencimento
+    essenciais = (
+        float(essenciais_informados)
+        if essenciais_informados is not None
+        else float(projetar_essenciais_ate_renda(ctx)["essenciais_ate_renda"])
+    )
+    essenciais += despesas_apos_vencimento
     disponivel = caixa - essenciais - reserva_desejada
     dias_renda = (ctx.proxima_renda - ctx.proximo_vencimento).days
     valor_minimo = 0.15 * valor_fatura

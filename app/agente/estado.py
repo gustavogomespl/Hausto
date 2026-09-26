@@ -29,7 +29,14 @@ class Contexto:
 
 class Estado(MessagesState):
     # persistem na sessão
-    dados: dict[str, float]  # informados pelo cliente: valor_fatura, saldo_atual, reserva_desejada
+    dados: dict[str, Any]
+    despesas: list[dict[str, Any]]
+    pendencias: list[str]
+    pergunta_aberta: str | None
+    campo_pergunta_aberta: str | None
+    origens: dict[str, str]
+    versao_contexto: int
+    referencia_dados: str
     escolha: dict[str, Any] | None
     comparacao: dict[str, Any] | None
     # do turno (zerados pelo guardrail)
@@ -41,6 +48,11 @@ class Estado(MessagesState):
     tools: list[str]
     reescritas: int
     numeros_sem_fonte: list[str]
+    turno_id: str
+    eventos: list[dict[str, Any]]
+    revisao: dict[str, Any]
+    modo_resposta: str
+    erro_calculo: str | None
 
 
 class EstadoConversa(AgentState):
@@ -50,3 +62,5 @@ class EstadoConversa(AgentState):
     etapa: NotRequired[str]
     dados_mudaram: NotRequired[bool]
     correcao: NotRequired[str | None]
+    dados_confirmados: NotRequired[dict[str, Any]]
+    despesas_confirmadas: NotRequired[list[dict[str, Any]]]

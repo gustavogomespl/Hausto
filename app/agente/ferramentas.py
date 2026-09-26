@@ -13,6 +13,11 @@ from langchain.tools import ToolRuntime, tool
 
 from app import calculos
 from app.agente.estado import Contexto
+from app.agente.contexto_financeiro import comparar_contexto
+
+
+def _comparacao_atual(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
+    return comparar_contexto(runtime.context.carregar(), runtime.state.get("dados_confirmados") or {}, runtime.state.get("despesas_confirmadas") or [])
 
 
 def _fatura_do_turno(runtime: ToolRuntime[Contexto]) -> float | None:
@@ -28,7 +33,9 @@ def obter_contexto_cliente(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
     """Persona, saldo atual, renda média, próximo vencimento, próxima renda, últimas faturas e decisões anteriores."""
     ctx = runtime.context.carregar()
     decisoes = runtime.store.search(("decisoes", ctx.id_usuario), limit=3) if runtime.store else []
-    return {**ctx.resumo(), "decisoes_anteriores": [d.value for d in decisoes]}
+    return {**ctx.resumo(), "dados_confirmados": runtime.state.get("dados_confirmados") or {},
+            "despesas_confirmadas": runtime.state.get("despesas_confirmadas") or [],
+            "decisoes_anteriores": [d.value for d in decisoes]}
 
 
 @tool
@@ -40,13 +47,15 @@ def prever_fatura(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
 @tool
 def projetar_saldo_ate_vencimento(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
     """Projeta o saldo em conta no dia do vencimento da fatura (sem o pagamento da fatura)."""
-    return calculos.projetar_saldo_ate_vencimento(runtime.context.carregar())
+    c = _comparacao_atual(runtime)
+    return c if c.get("erro") else {"saldo_projetado_no_vencimento": c["saldo_projetado_no_vencimento"], "origem": "contexto_confirmado_e_projecao"}
 
 
 @tool
 def projetar_essenciais_ate_renda(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
     """Gastos essenciais esperados (casa, mercado, financiamentos...) entre o vencimento e a próxima renda."""
-    return calculos.projetar_essenciais_ate_renda(runtime.context.carregar())
+    c = _comparacao_atual(runtime)
+    return c if c.get("erro") else {"essenciais_ate_renda": c["essenciais_ate_renda"], "proxima_renda": c["proxima_renda"], "origem": "contexto_confirmado_e_projecao"}
 
 
 @tool
@@ -68,8 +77,11 @@ def simular_pagamento_com_negativo(runtime: ToolRuntime[Contexto], valor_fatura:
     if fatura is None:
         return {"erro": "fatura_desconhecida", "acao": "pergunte o valor da fatura ao cliente"}
     ctx = runtime.context.carregar()
-    saldo = calculos.projetar_saldo_ate_vencimento(ctx)["saldo_projetado_no_vencimento"]
-    return calculos.simular_pagamento_com_negativo(fatura, saldo, (ctx.proxima_renda - ctx.proximo_vencimento).days)
+    c = _comparacao_atual(runtime)
+    if c.get("erro"):
+        return c
+    from datetime import date
+    return calculos.simular_pagamento_com_negativo(fatura, c["saldo_projetado_no_vencimento"], (date.fromisoformat(c["proxima_renda"]) - ctx.proximo_vencimento).days)
 
 
 @tool
@@ -77,13 +89,18 @@ def comparar_opcoes(
     runtime: ToolRuntime[Contexto],
     valor_fatura: float | None = None,
     saldo_atual_informado: float | None = None,
-    reserva_desejada: float = 0.0,
+    reserva_desejada: float | None = None,
 ) -> dict[str, Any]:
     """Compara integral, parcial viável e mínimo com valores hipotéticos ("e se eu guardar 500?").
 
     Respeita essenciais + reserva até a próxima renda.
     """
-    return calculos.comparar_opcoes(runtime.context.carregar(), valor_fatura, saldo_atual_informado, reserva_desejada)
+    dados = dict(runtime.state.get("dados_confirmados") or {})
+    for campo, valor in (("valor_fatura", valor_fatura), ("saldo_atual", saldo_atual_informado), ("reserva_desejada", reserva_desejada)):
+        if valor is not None:
+            dados[campo] = valor
+    # Uma hipótese usa uma cópia: a chamada da ferramenta não altera fatos da sessão.
+    return comparar_contexto(runtime.context.carregar(), dados, runtime.state.get("despesas_confirmadas") or [])
 
 
 FERRAMENTAS = [

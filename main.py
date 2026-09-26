@@ -69,6 +69,12 @@ class RespostaChat(BaseModel):
     pendente_confirmacao: dict[str, Any] | None
     tools_chamadas: list[str]
     numeros_sem_fonte: list[str]
+    versao_contexto: int
+    turno_id: str
+    eventos: list[dict[str, Any]]
+    revisao: dict[str, Any]
+    modo_resposta: str
+    pendencias: list[str]
 
 
 @app.get("/", include_in_schema=False)
@@ -143,4 +149,10 @@ def chat(pedido: PedidoChat) -> RespostaChat:
         pendente_confirmacao=turno.pendente_confirmacao,
         tools_chamadas=turno.tools,
         numeros_sem_fonte=turno.numeros_sem_fonte,
+        versao_contexto=turno.versao_contexto,
+        turno_id=turno.turno_id,
+        eventos=turno.eventos,
+        revisao=turno.revisao,
+        modo_resposta=turno.modo_resposta,
+        pendencias=turno.pendencias,
     )
