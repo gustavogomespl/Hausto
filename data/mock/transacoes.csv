@@ -1,0 +1,91 @@
+id_usuario,anomesdia,anomes,tipo,descr,vlr,nom_cate_macro,nom_cate_micro,saldo_apos,parcela_atual,parcela_total
+demo-001,2025-07-05,202507,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-07-12,202507,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-07-25,202507,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-07-27,202507,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-07-28,202507,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-001,2025-08-05,202508,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-08-12,202508,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-08-25,202508,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-08-27,202508,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-08-28,202508,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-001,2025-09-05,202509,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-09-12,202509,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-09-25,202509,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-09-27,202509,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-09-28,202509,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-001,2025-10-05,202510,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-10-12,202510,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-10-25,202510,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-10-27,202510,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-10-28,202510,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-001,2025-11-05,202511,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-11-12,202511,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-11-25,202511,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-11-27,202511,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-11-28,202511,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-001,2025-12-05,202512,E,Renda mensal ficticia,3000.00,Renda,Renda mensal,7200.00,0,0
+demo-001,2025-12-12,202512,S,Moradia ficticia,1500.00,Casa,Moradia,5700.00,0,0
+demo-001,2025-12-25,202512,S,Fatura ficticia parcial,900.00,Cartao,Pagamento de fatura,4800.00,0,0
+demo-001,2025-12-27,202512,S,Mercado ficticio,400.00,Mercado,Compras de mercado,4400.00,0,0
+demo-001,2025-12-28,202512,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,4200.00,0,0
+demo-002,2025-07-05,202507,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-07-12,202507,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-07-25,202507,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-07-27,202507,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-07-28,202507,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-002,2025-08-05,202508,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-08-12,202508,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-08-25,202508,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-08-27,202508,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-08-28,202508,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-002,2025-09-05,202509,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-09-12,202509,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-09-25,202509,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-09-27,202509,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-09-28,202509,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-002,2025-10-05,202510,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-10-12,202510,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-10-25,202510,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-10-27,202510,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-10-28,202510,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-002,2025-11-05,202511,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-11-12,202511,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-11-25,202511,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-11-27,202511,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-11-28,202511,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-002,2025-12-05,202512,E,Renda mensal ficticia,2300.00,Renda,Renda mensal,4300.00,0,0
+demo-002,2025-12-12,202512,S,Moradia ficticia,1000.00,Casa,Moradia,3300.00,0,0
+demo-002,2025-12-25,202512,S,Fatura ficticia parcial,700.00,Cartao,Pagamento de fatura,2600.00,0,0
+demo-002,2025-12-27,202512,S,Mercado ficticio,400.00,Mercado,Compras de mercado,2200.00,0,0
+demo-002,2025-12-28,202512,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,2000.00,0,0
+demo-003,2025-07-05,202507,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-07-12,202507,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-07-25,202507,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-07-27,202507,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-07-28,202507,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
+demo-003,2025-08-05,202508,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-08-12,202508,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-08-25,202508,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-08-27,202508,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-08-28,202508,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
+demo-003,2025-09-05,202509,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-09-12,202509,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-09-25,202509,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-09-27,202509,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-09-28,202509,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
+demo-003,2025-10-05,202510,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-10-12,202510,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-10-25,202510,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-10-27,202510,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-10-28,202510,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
+demo-003,2025-11-05,202511,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-11-12,202511,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-11-25,202511,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-11-27,202511,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-11-28,202511,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
+demo-003,2025-12-05,202512,E,Renda mensal ficticia,1800.00,Renda,Renda mensal,1800.00,0,0
+demo-003,2025-12-12,202512,S,Moradia ficticia,700.00,Casa,Moradia,1100.00,0,0
+demo-003,2025-12-25,202512,S,Fatura ficticia parcial,100.00,Cartao,Pagamento de fatura,1000.00,0,0
+demo-003,2025-12-27,202512,S,Mercado ficticio,800.00,Mercado,Compras de mercado,200.00,0,0
+demo-003,2025-12-28,202512,S,Combustivel ficticio,200.00,Posto de combustivel,Combustivel,0.00,0,0
