@@ -32,6 +32,7 @@ class Estado(MessagesState):
     dados: dict[str, Any]
     despesas: list[dict[str, Any]]
     pendencias: list[str]
+    pendencias_novas: bool
     pergunta_aberta: str | None
     campo_pergunta_aberta: str | None
     origens: dict[str, str]

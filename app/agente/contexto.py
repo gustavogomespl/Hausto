@@ -84,19 +84,22 @@ def atualizar_fatos(estado: dict[str, Any], e: Extracao, ctx: ContextoCliente) -
     if len(incompletas) > 1 and (e.data_despesa_pendente is not None or e.adicional_pendente is not None):
         pendencias.insert(0, "Há mais de uma despesa incompleta. Repita a despesa com valor, data e se ela é adicional.")
 
+    pendencias = list(dict.fromkeys(pendencias))
+    # Pendência só interrompe o turno em que surge ou muda; ignorada, não trava a sessão.
+    pendencias_novas = pendencias != (estado.get("pendencias") or [])
     ref = referencia(ctx)
     mudou = (
         dados != (estado.get("dados") or {})
         or despesas != (estado.get("despesas") or [])
         or bool(estado.get("referencia_dados") and estado["referencia_dados"] != ref)
-        or pendencias != (estado.get("pendencias") or [])
+        or pendencias_novas
     )
     versao = estado.get("versao_contexto", 0)
     versao = versao + 1 if mudou or not versao else versao
     escolha = {"opcao": e.opcao_escolhida, "valor": e.valor_escolhido} if e.opcao_escolhida else None
     return {
         "dados": dados, "despesas": despesas, "origens": origens,
-        "pendencias": list(dict.fromkeys(pendencias)), "pergunta_aberta": pergunta_aberta, "campo_pergunta_aberta": campo_aberto,
+        "pendencias": pendencias, "pendencias_novas": pendencias_novas, "pergunta_aberta": pergunta_aberta, "campo_pergunta_aberta": campo_aberto,
         "versao_contexto": versao, "referencia_dados": ref,
         "dados_mudaram": mudou, "escolha": escolha,
         "comparacao": None if mudou else estado.get("comparacao"),

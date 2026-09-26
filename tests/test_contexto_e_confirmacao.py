@@ -294,3 +294,68 @@ def test_negar_escolha_nao_pede_confirmacao(bruno, fluxo):
     t = conversar(g, bruno, "s1", "Nao quero pagar o minimo")
     assert not t.pendente_confirmacao
     assert not store.search(("decisoes", bruno.id_usuario))
+
+
+# ------------------------------------------------------------------ ajustes: confirmação natural e pendências que não travam
+
+
+@pytest.mark.parametrize("mensagem", ["Sim, pode registrar", "pode", "isso mesmo", "fechado, pode registrar!"])
+def test_confirmacao_natural_confirma(mensagem):
+    assert confirmou(mensagem)
+
+
+@pytest.mark.parametrize("mensagem", ["não, obrigado", "Não quero mais", "cancela"])
+def test_negativa_natural_cancela_proposta(bruno, fluxo, mensagem):
+    g, store = fluxo
+    conversar(g, bruno, "s1", INICIO)
+    assert conversar(g, bruno, "s1", "quero pagar o mínimo").pendente_confirmacao
+    t = conversar(g, bruno, "s1", mensagem)
+    assert t.etapa == "decisao_cancelada" and not t.pendente_confirmacao
+    assert not store.search(("decisoes", bruno.id_usuario))
+
+
+def test_negativa_com_dado_novo_reprocessa(bruno, fluxo):
+    g, store = fluxo
+    conversar(g, bruno, "s1", INICIO)
+    conversar(g, bruno, "s1", "quero pagar o mínimo")
+    t = conversar(g, bruno, "s1", "não, minha reserva é R$ 200")
+    assert t.etapa != "decisao_cancelada"
+    assert estado(g, bruno)["dados"]["reserva_desejada"] == 200
+    assert not store.search(("decisoes", bruno.id_usuario))
+
+
+def test_pendencia_ignorada_nao_trava_a_sessao(bruno, fluxo):
+    g, _ = fluxo
+    conversar(g, bruno, "s1", INICIO)
+    assert conversar(g, bruno, "s1", "Meu salário atrasou").etapa == "perguntar_cliente"
+    t = conversar(g, bruno, "s1", "ok, e agora?")
+    assert t.etapa == "explicar_opcoes"
+    assert estado(g, bruno)["comparacao"]["disponivel_para_fatura"] == 3400
+
+
+def test_valor_de_outro_campo_nao_vira_despesa():
+    e = extrair_por_regras("gasto metade do salário no mercado, fatura 1.500")
+    assert e.valor_fatura == 1500 and not e.despesas
+
+
+@pytest.mark.parametrize("mensagem", ["pode ser o parcial", "ok, troca pro parcial", "isso, prefiro o integral", "sim, a fatura é outra"])
+def test_troca_de_opcao_nao_confirma_proposta_antiga(mensagem):
+    assert not confirmou(mensagem)
+
+
+def test_duvida_na_confirmacao_nao_cancela(bruno, fluxo):
+    g, store = fluxo
+    conversar(g, bruno, "s1", INICIO)
+    conversar(g, bruno, "s1", "quero pagar o mínimo")
+    t = conversar(g, bruno, "s1", "não sei, qual é melhor?")
+    assert t.etapa != "decisao_cancelada"
+    assert not store.search(("decisoes", bruno.id_usuario))
+
+
+def test_pendencia_ignorada_aparece_na_resposta(bruno, fluxo):
+    g, _ = fluxo
+    conversar(g, bruno, "s1", INICIO)
+    conversar(g, bruno, "s1", "Tenho despesa de R$ 500")
+    t = conversar(g, bruno, "s1", "ok, e aí?")
+    assert t.etapa == "explicar_opcoes"
+    assert "fora deste cálculo" in t.resposta and t.pendencias[0] in t.resposta

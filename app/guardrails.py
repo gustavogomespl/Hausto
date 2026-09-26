@@ -16,7 +16,8 @@ _INJECAO = re.compile(
 # pt-BR (2.173,51), ponto decimal cru do JSON (2173.51) ou inteiro/vírgula.
 # O sinal pode vir antes ou depois de R$: nunca transformar dívida em sobra.
 _NUMERO = re.compile(
-    r"(?P<sinal_antes>[+\-−])?\s*(?P<moeda>R\$\s*)?"
+    # Sinal colado ao valor: "- R$ 10" num item de lista não é negativo.
+    r"(?P<sinal_antes>[+\-−])?(?P<moeda>R\$\s*)?"
     r"(?P<sinal_depois>[+\-−])?\s*"
     r"(?P<numero>\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+\.\d{1,2}(?!\d)|\d+(?:,\d{1,2})?)"
     r"(?P<percentual>\s*%)?"

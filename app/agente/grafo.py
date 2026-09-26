@@ -29,7 +29,7 @@ from pydantic import ValidationError
 from app import calculos
 from app.agente import texto
 from app.agente.estado import Contexto, Estado, EstadoConversa
-from app.agente.extracao import Extrator, confirmou, extrair_por_regras
+from app.agente.extracao import Extrator, confirmou, extrair_por_regras, negou
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, referencia
 from app.agente.contexto_financeiro import comparar_contexto
 from app.agente.extracao import Extracao
@@ -72,6 +72,12 @@ def instrucao_do_turno(request: ModelRequest) -> str:
     )
 
 
+def _com_pendencias(resposta: str, estado: Estado) -> str:
+    """O cálculo seguiu sem o que está pendente: o cliente precisa saber o que ficou de fora."""
+    pendencias = estado.get("pendencias") or []
+    return f"{resposta}\nPonto em aberto, fora deste cálculo: {pendencias[0]}" if pendencias else resposta
+
+
 def _texto_do_cliente(estado: Estado) -> str:
     return next(m.text for m in reversed(estado["messages"]) if isinstance(m, HumanMessage))
 
@@ -91,6 +97,13 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         if modelo is not None
         else None
     )
+
+    def _trouxe_fato(mensagem: str) -> bool:
+        """Uma negativa com dado novo ("não, minha reserva é 200") volta à entrada em vez de cancelar."""
+        try:
+            return bool(extrator(mensagem).model_dump(exclude_defaults=True))
+        except (ValueError, TypeError):
+            return True
 
     # ---- nós
 
@@ -194,7 +207,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         fontes = [json.dumps(estado["comparacao"]), json.dumps(ctx.resumo()), json.dumps(estado["dados"]), *estado["fontes"]]
         suspeitos = numeros_sem_fonte(estado["rascunho"], fontes)
         if not suspeitos:
-            return {"messages": [AIMessage(estado["rascunho"])], "numeros_sem_fonte": [],
+            return {"messages": [AIMessage(_com_pendencias(estado["rascunho"], estado))], "numeros_sem_fonte": [],
                     "eventos": _evento(estado, "revisao_texto", "concluido")}
         reescritas = estado["reescritas"] + 1
         log.warning("numeros_sem_fonte usuario=%s tentativa=%d %s", ctx.id_usuario, reescritas, suspeitos)
@@ -202,7 +215,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             correcao = f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. Reescreva usando só os números do cálculo e das tools."
             return {"reescritas": reescritas, "correcao": correcao}
         segura = texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"])
-        return {"reescritas": reescritas, "messages": [AIMessage(segura)], "numeros_sem_fonte": [],
+        return {"reescritas": reescritas, "messages": [AIMessage(_com_pendencias(segura, estado))], "numeros_sem_fonte": [],
                 "modo_resposta": "fallback_validacao", "eventos": _evento(estado, "revisao_texto", "texto_substituido")}
 
     def pedir_confirmacao(estado: Estado) -> dict[str, Any]:
@@ -236,7 +249,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         valida = (e["versao_contexto"] == estado["versao_contexto"] and estado["referencia_dados"] == referencia(ctx)
                   and revisar_comparacao(estado.get("comparacao"), estado["versao_contexto"])["status"] == "pode_apresentar")
         if not confirmou(resposta) or not valida:
-            if resposta.strip().lower().rstrip(".! ") in {"não", "nao", "cancelar", "cancelo", "não, pera"}:
+            if negou(resposta) and not _trouxe_fato(resposta):
                 return Command(goto=END, update={**novo_turno, "escolha": None, "etapa": "decisao_cancelada", "messages": [HumanMessage(resposta), AIMessage(texto.DECISAO_CANCELADA)],
                                                 "eventos": _evento(estado_evento, "confirmacao", "cancelada")})
             # Reentrar pela entrada normal permite extrair uma ressalva/nova despesa.
@@ -258,7 +271,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return END if estado["etapa"] == "bloqueado" else "atualizar_estado"
 
     def dados_suficientes(estado: Estado, runtime: Runtime[Contexto]) -> str:
-        if estado.get("pendencias"):
+        if estado.get("pendencias") and estado.get("pendencias_novas"):
             return "perguntar_cliente"
         pronta = "valor_fatura" in estado["dados"] or calculos.prever_fatura(runtime.context.carregar())["pronta"]
         return "calcular_opcoes" if pronta else "perguntar_cliente"

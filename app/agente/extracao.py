@@ -84,7 +84,8 @@ def extrair_por_regras(texto: str) -> Extracao:
             campos["esclarecimento"] = "Qual é a data completa e válida desse compromisso?"
             campos["campo_esclarecimento"] = "proxima_renda" if renda else "despesas"
     hipotese = "?" in t or bool(re.search(r"\be se\b|\bse eu\b|\btalvez\b", t))
-    despesa = re.search(rf"\b(?:despesa|gasto|compromisso)[^\d?!]{{0,45}}?{_NUM}", t)
+    # Pontuação separa frases: o valor de outra frase (ex.: a fatura) não é da despesa.
+    despesa = re.search(rf"\b(?:despesa|gasto|compromisso)[^\d?!,.;]{{0,45}}?{_NUM}", t)
     if despesa and t[despesa.end():despesa.end()+1] in {"/", "-"}:
         despesa = None  # O dia de vencimento não é o valor da despesa.
     if not hipotese:
@@ -141,9 +142,18 @@ def extrator_llm(modelo: Any) -> Extrator:
     return extrair
 
 
-_SIM = re.compile(r"\s*(?:sim(?:,?\s*confirmo)?|s|confirmo|confirmado|pode registrar|ok|correto|fechado)[.!\s]*", re.IGNORECASE)
+_SIM = {"sim", "s", "confirmo", "confirmado", "pode", "isso", "ok", "correto", "certo", "fechado", "claro", "beleza", "perfeito", "exato"}
+# Só palavras de aceite: qualquer outra ("parcial", "prefiro", "mas", um valor) é informação nova.
+_ACEITE = _SIM | {"registrar", "registra", "mesmo", "ser", "sim", "por", "favor", "obrigado", "obrigada", "com", "certeza", "manda", "ver"}
+_NAO = re.compile(r"^\s*(?:n[ãa]o|cancela\w*|desist\w*)\b(?!\s+sei)", re.IGNORECASE)
 
 
 def confirmou(texto: str) -> bool:
     # Uma ressalva ou informação nova nunca confirma silenciosamente uma proposta antiga.
-    return bool(_SIM.fullmatch(texto))
+    palavras = re.findall(r"\w+", texto.lower())
+    return "?" not in texto and bool(palavras) and palavras[0] in _SIM and all(p in _ACEITE for p in palavras)
+
+
+def negou(texto: str) -> bool:
+    # Dúvida ("não sei, qual é melhor?") volta para a conversa em vez de cancelar.
+    return "?" not in texto and bool(_NAO.search(texto))

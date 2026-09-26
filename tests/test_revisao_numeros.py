@@ -54,3 +54,7 @@ def test_valores_monetarios_originais_continuam_validos():
     assert numeros_sem_fonte("A fatura é R$ 1.234,50 e o custo é R$ 145,83.", fontes) == []
     assert numeros_sem_fonte("A fatura é R$ 1234.50 e o custo é R$ 145.83.", fontes) == []
     assert numeros_sem_fonte("O custo é R$ 999,50.", fontes) == ["R$ 999,50"]
+
+
+def test_marcador_de_lista_nao_vira_sinal_negativo():
+    assert numeros_sem_fonte("Resumo:\n- R$ 2.173,51 de fatura", [{"valor_fatura": 2173.51}]) == []
