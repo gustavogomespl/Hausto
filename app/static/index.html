@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agente de Fatura</title>
+<style>
+  :root { --papel:#f1f5f2; --sup:#fff; --tinta:#15302a; --suave:#4b5f59; --saida:#0a6a4b; --clara:#ddefe6; --linha:#c5d3cd; --marca:#fce588; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--papel); color:var(--tinta); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:40rem; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; min-height:100vh; }
+  header { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:1.1rem; margin:0 auto 0 0; }
+  select, input, button { font:inherit; padding:10px 12px; border:1px solid var(--linha); border-radius:10px; background:var(--sup); color:inherit; min-height:44px; }
+  button { background:var(--saida); color:#fff; border:0; cursor:pointer; }
+  button:disabled, select:disabled { opacity:.5; cursor:wait; }
+  #conversa { flex:1; display:flex; flex-direction:column; gap:8px; }
+  .msg { padding:10px 14px; border-radius:14px; max-width:88%; white-space:pre-wrap; }
+  .cliente { align-self:flex-end; background:var(--saida); color:#fff; }
+  .agente { align-self:flex-start; background:var(--sup); border:1px solid var(--linha); }
+  .meta { font-size:.75rem; color:var(--suave); margin-top:4px; }
+  form { display:flex; gap:8px; } form input { flex:1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Agente de Fatura</h1>
+    <select id="cliente" aria-label="Cliente" disabled><option value="">carregando clientes…</option></select>
+    <button type="button" id="nova">Nova conversa</button>
+  </header>
+  <section id="conversa" aria-live="polite"></section>
+  <form id="form">
+    <input id="texto" autocomplete="off" placeholder="Ex.: minha fatura vence semana que vem, o que faço?" required>
+    <button id="enviar" disabled>Enviar</button>
+  </form>
+</main>
+<script>
+  const $ = (s) => document.querySelector(s);
+  let sessao = null;
+  const add = (cls, texto, meta) => {
+    const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = texto;
+    if (meta) { const m = document.createElement("div"); m.className = "meta"; m.textContent = meta; d.appendChild(m); }
+    $("#conversa").appendChild(d); d.scrollIntoView({ behavior: "smooth" });
+  };
+  // A lista vem do BigQuery e pode levar alguns segundos: só libera o envio com um cliente escolhido.
+  fetch("/v1/clientes").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(lista => {
+    $("#cliente").replaceChildren();
+    for (const c of lista) {
+      const o = document.createElement("option"); o.value = c.id_usuario;
+      o.textContent = `${c.persona} · ${c.id_usuario.slice(0, 8)}${c.gatilho ? " · gatilho D-7" : ""}`;
+      $("#cliente").appendChild(o);
+    }
+    $("#cliente").disabled = false; $("#enviar").disabled = lista.length === 0;
+  }).catch(err => {
+    $("#cliente").replaceChildren(new Option("erro ao carregar clientes", ""));
+    add("agente", `Não consegui carregar a lista de clientes (${err.message}). Recarregue a página.`);
+  });
+  const reset = () => { sessao = null; $("#conversa").innerHTML = ""; };
+  $("#nova").onclick = reset; $("#cliente").onchange = reset;
+  $("#form").onsubmit = async (e) => {
+    e.preventDefault();
+    const mensagem = $("#texto").value.trim(); if (!mensagem || !$("#cliente").value) return;
+    $("#texto").value = ""; add("cliente", mensagem);
+    const r = await fetch("/v1/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_usuario: $("#cliente").value, mensagem, sessao_id: sessao }) });
+    if (!r.ok) { add("agente", "Erro " + r.status + ": " + await r.text()); return; }
+    const j = await r.json(); sessao = j.sessao_id;
+    const alerta = j.numeros_sem_fonte.length ? ` · ⚠ números sem fonte: ${j.numeros_sem_fonte.join(", ")}` : "";
+    add("agente", j.resposta, `${j.modo} · ${j.etapa} · tools: ${j.tools_chamadas.join(", ") || "—"}${alerta}`);
+  };
+</script>
+</body>
+</html>

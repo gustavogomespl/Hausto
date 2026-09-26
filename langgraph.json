@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agente_fatura": "./app/agente/studio.py:grafo"
+  },
+  "env": ".env"
+}
