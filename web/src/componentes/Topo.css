@@ -31,6 +31,17 @@
   color: #fff;
 }
 
+.topo-simulando {
+  margin-right: auto;
+  margin-left: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--marinho);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Folha cinza que "sobe" sobre o laranja */
 .folha {
   position: relative;

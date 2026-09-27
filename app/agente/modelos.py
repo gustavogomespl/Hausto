@@ -29,6 +29,10 @@ def modelo_chat() -> Any | None:
     modelo = os.getenv("MODELO", "gemini-3.8-flash")
     # WhatsApp não espera 70 s: poucas tentativas curtas; se falhar, o grafo responde sem LLM.
     limites = {"timeout": float(os.getenv("LLM_TIMEOUT_S", "20")), "max_retries": int(os.getenv("LLM_MAX_RETRIES", "1"))}
+    # Thinking do Gemini 3.x vem ligado: ~600 tokens de raciocínio por chamada (6,6 s -> 2,2 s com "low").
+    # As contas estão nas regras e tools; LLM_THINKING="" volta ao padrão do modelo.
+    if thinking := os.getenv("LLM_THINKING", "low"):
+        limites["thinking_level"] = thinking
     if modo_llm() == "vertex":
         return ChatGoogleGenerativeAI(
             model=modelo,

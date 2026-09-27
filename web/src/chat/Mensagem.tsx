@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import type { Visual as TipoVisual } from '../api';
 import { Brilho, Joinha, Som } from '../componentes/Icones';
+import { Visual } from './Visual';
 
 /** Texto do Hausto: cada linha vira um parágrafo; "- " vira item; **negrito** e ✦ em laranja. */
 export function TextoHausto({ texto }: { texto: string }) {
@@ -27,10 +29,13 @@ function enfeitar(linha: string): ReactNode[] {
   });
 }
 
-export function MensagemHausto({ texto }: { texto: string }) {
+export function MensagemHausto({ texto, visuais = [] }: { texto: string; visuais?: TipoVisual[] }) {
   return (
     <div className="msg-hausto">
       <TextoHausto texto={texto} />
+      {visuais.map((v, i) => (
+        <Visual key={i} visual={v} />
+      ))}
       <div className="msg-reacoes" aria-hidden="true">
         <Joinha tamanho={22} />
         <Joinha tamanho={22} style={{ transform: 'rotate(180deg)' }} />

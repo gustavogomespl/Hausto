@@ -16,7 +16,11 @@ const CARLA: Persona = {
 };
 
 function mockApi(clientes: ClienteResumo[] = []) {
-  const respostas: Record<string, unknown> = { '/v1/personas': [CARLA], '/v1/clientes?limite=50': clientes };
+  const respostas: Record<string, unknown> = {
+    '/v1/personas': [CARLA],
+    '/v1/clientes?limite=50': clientes,
+    '/v1/clientes/id-carla-0001/painel': { data_ref: '2025-12-18' },
+  };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => ({ ok: true, status: 200, json: async () => respostas[url] })),
@@ -56,5 +60,36 @@ describe('<Admin>', () => {
     fireEvent.click(await screen.findByTitle('id-carla-0001'));
 
     expect(aoEscolher).toHaveBeenCalledWith({ id_usuario: 'id-carla-0001', persona: CARLA });
+  });
+
+  it('"+7 dias" avança a partir da data original do cliente', async () => {
+    mockApi();
+    const aoMudarData = vi.fn();
+    render(<Admin atual={{ id_usuario: 'id-carla-0001', persona: CARLA }} aoEscolher={() => {}} aoMudarData={aoMudarData} />);
+
+    expect(await screen.findByText('18/12/2025')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Voltar à data original' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '+7 dias' }));
+
+    expect(aoMudarData).toHaveBeenCalledWith('2025-12-25');
+  });
+
+  it('avança a partir da data já escolhida e "Voltar à data original" limpa', async () => {
+    mockApi();
+    const aoMudarData = vi.fn();
+    render(
+      <Admin
+        atual={{ id_usuario: 'id-carla-0001', persona: CARLA, data_ref: '2025-12-30' }}
+        aoEscolher={() => {}}
+        aoMudarData={aoMudarData}
+      />,
+    );
+
+    expect(screen.getByText('30/12/2025')).toBeTruthy();
+    expect(await screen.findByText('Data original: 18/12/2025')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '+3 dias' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar à data original' }));
+
+    expect(aoMudarData.mock.calls).toEqual([['2026-01-02'], [null]]);
   });
 });

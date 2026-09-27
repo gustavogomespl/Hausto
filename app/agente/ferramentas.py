@@ -7,13 +7,13 @@ considera o valor informado pelo cliente.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from langchain.tools import ToolRuntime, tool
 
-from app import calculos
-from app.agente.estado import Contexto
+from app import calculos, plano, visuais
 from app.agente.contexto_financeiro import comparar_contexto
+from app.agente.estado import Contexto
 
 
 def _comparacao_atual(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
@@ -103,6 +103,59 @@ def comparar_opcoes(
     return comparar_contexto(runtime.context.carregar(), dados, runtime.state.get("despesas_confirmadas") or [])
 
 
+@tool
+def mostrar_visual(
+    tipo: Literal["comparar_opcoes", "caixa_ate_renda", "linha_do_tempo", "progresso_plano"],
+    runtime: ToolRuntime[Contexto],
+    pagamento: Literal["integral", "parcial_viavel", "minimo"] | None = None,
+    valor_pago: float | None = None,
+) -> dict[str, Any]:
+    """Mostra um gráfico no chat, montado com os números do cálculo atual (você não escreve os números dele).
+
+    - comparar_opcoes: custo de pagar tudo, parte ou o mínimo, lado a lado.
+    - caixa_ate_renda: quanto sobra ou falta até a próxima renda com um pagamento (`pagamento` ou `valor_pago`).
+    - linha_do_tempo: hoje, despesas informadas, vencimento e próxima renda.
+    - progresso_plano: como o cliente está no plano aceito (gasto real x combinado).
+    Use no máximo um por resposta, quando ajudar o cliente a enxergar a decisão.
+    """
+    ctx = runtime.context.carregar()
+    if tipo == "progresso_plano":
+        salvo = runtime.store.get(("planos", ctx.id_usuario), "ativo") if runtime.store else None
+        if salvo is None:  # não é erro de tool: o modelo só precisa saber que não há plano
+            return {"sem_plano": True, "mensagem": "O cliente não tem plano ativo."}
+        return plano.visual(salvo.value, plano.progresso(salvo.value, ctx))
+    c = _comparacao_atual(runtime)
+    if c.get("erro"):
+        return c
+    return visuais.montar(tipo, runtime.context.carregar(), c, valor_pago if valor_pago is not None else pagamento)
+
+
+@tool
+def simular_plano(pagamento_fatura: float, runtime: ToolRuntime[Contexto], reserva: float | None = None,
+                  limite_diario: float | None = None) -> dict[str, Any]:
+    """Confere um plano até a próxima renda: pagar `pagamento_fatura`, guardar `reserva` e gastar até
+    `limite_diario` por dia no dia a dia (lazer, delivery, lojas...; essenciais já estão contados).
+
+    Sem `limite_diario`, devolve o limite máximo que o caixa aguenta. Use para testar variações antes de propor.
+    """
+    c = _comparacao_atual(runtime)
+    if c.get("erro"):
+        return c
+    return plano.simular(runtime.context.carregar(), c, pagamento_fatura, reserva, limite_diario)
+
+
+@tool
+def propor_plano(pagamento_fatura: float, limite_diario: float, runtime: ToolRuntime[Contexto],
+                 reserva: float | None = None) -> dict[str, Any]:
+    """Propõe ao cliente um plano que `simular_plano` mostrou que cabe. O sistema pede o aceite dele
+    e só então liga os avisos; não diga que o plano já está ativo.
+    """
+    c = _comparacao_atual(runtime)
+    if c.get("erro"):
+        return c
+    return {**plano.simular(runtime.context.carregar(), c, pagamento_fatura, reserva, limite_diario), "proposto": True}
+
+
 FERRAMENTAS = [
     obter_contexto_cliente,
     prever_fatura,
@@ -111,4 +164,7 @@ FERRAMENTAS = [
     simular_custo_rolagem,
     simular_pagamento_com_negativo,
     comparar_opcoes,
+    mostrar_visual,
+    simular_plano,
+    propor_plano,
 ]

@@ -35,6 +35,24 @@ export function diaMesCurto(data: string) {
   return `${dia}/${MESES[mes - 1]?.slice(0, 3) ?? '?'}`;
 }
 
+/** "2025-12-05" -> "05/12" */
+export function diaMesNumerico(data: string) {
+  const { mes, dia } = partes(data);
+  return `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}`;
+}
+
+/** "2025-12-05" -> "05/12/2025" */
+export function dataCompleta(data: string) {
+  const { ano } = partes(data);
+  return `${diaMesNumerico(data)}/${ano}`;
+}
+
+/** "2025-12-18" + 7 -> "2025-12-25", em UTC para não tropeçar em fuso ou horário de verão. */
+export function somarDias(data: string, dias: number) {
+  const { ano, mes, dia } = partes(data);
+  return new Date(Date.UTC(ano, mes - 1, dia + dias)).toISOString().slice(0, 10);
+}
+
 /** Título do grupo no extrato: "Hoje · 07/10" ou "20 de setembro". */
 export function tituloDoDia(data: string, hoje: string) {
   const { mes, dia } = partes(data);

@@ -70,6 +70,8 @@ class Estado(MessagesState):
     origem: dict[str, str] | None  # aviso ou valor ✦ que abriu o chat neste turno
     campo_da_abertura: str | None  # a abertura pediu um dado: vale só para a próxima mensagem
     sugestoes: list[str]
+    visuais: list[dict[str, Any]]  # gráficos do turno, montados pelo código (app.visuais)
+    plano_proposto: dict[str, Any] | None  # plano que cabe e espera o aceite do cliente
     ancora: dict[str, Any] | None
 
 

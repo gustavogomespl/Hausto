@@ -25,7 +25,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 from pydantic import BaseModel, Field, model_validator
 
-from app import calculos, logs, painel, personas
+from app import calculos, logs, painel, personas, plano
 from app.agente import construir_grafo, conversar
 from app.agente.grafo import ConflitoSessao
 from app.agente.modelos import extrator, modelo_chat, modo_llm
@@ -108,7 +108,7 @@ class Origem(BaseModel):
     """Aviso ou valor ✦ que abriu o chat. O texto de abertura fica no backend."""
 
     tipo: Literal["aviso", "ancora"]
-    id: Literal["fatura_vence", "sem_folga", "imprevisto"] | None = None
+    id: Literal["fatura_vence", "sem_folga", "imprevisto", "plano"] | None = None
     campo: Literal["saldo", "fatura", "gasto_por_dia", "juros_por_dia", "parcelas"] | None = None
 
     @model_validator(mode="after")
@@ -150,6 +150,7 @@ class RespostaChat(BaseModel):
     modo_resposta: str
     pendencias: list[str]
     sugestoes: list[str]
+    visuais: list[dict[str, Any]] = Field(default_factory=list)
     ancora: dict[str, Any] | None
     pergunta: str | None
     request_id: str = ""
@@ -185,7 +186,22 @@ def painel_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str
 
 @app.get("/v1/clientes/{id_usuario}/avisos")
 def avisos_do_cliente(id_usuario: str, data_ref: date | None = None) -> list[dict[str, Any]]:
-    return painel.avisos(contexto_do_cliente(id_usuario, data_ref))
+    ctx = contexto_do_cliente(id_usuario, data_ref)
+    return painel.avisos(ctx, _plano_ativo(id_usuario))
+
+
+def _plano_ativo(id_usuario: str) -> dict[str, Any] | None:
+    item = STORE.get(("planos", id_usuario), "ativo")
+    return item.value if item else None
+
+
+@app.get("/v1/clientes/{id_usuario}/plano")
+def plano_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str, Any] | None:
+    """Plano aceito pelo cliente, com o progresso até a data da simulação (ou null)."""
+    p = _plano_ativo(id_usuario)
+    if p is None:
+        return None
+    return {**p, "progresso": plano.progresso(p, contexto_do_cliente(id_usuario, data_ref))}
 
 
 @app.get("/saude")
@@ -277,6 +293,7 @@ def chat(pedido: PedidoChat, request: Request = None) -> RespostaChat:
             modo_resposta=turno.modo_resposta,
             pendencias=turno.pendencias,
             sugestoes=turno.sugestoes,
+            visuais=turno.visuais,
             ancora=turno.ancora,
             pergunta=turno.pergunta,
             request_id=turno.request_id,

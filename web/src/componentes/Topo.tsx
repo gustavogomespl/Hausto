@@ -1,12 +1,15 @@
+import { diaMesNumerico } from '../formato';
 import { Balao, Busca, Sino } from './Icones';
 import './Topo.css';
 
-type Props = { iniciais: string; aoAbrirChat: () => void };
+/** `simulando`: data da simulação escolhida no admin, para ninguém confundir o "hoje" na demo. */
+type Props = { iniciais: string; simulando?: string; aoAbrirChat: () => void };
 
-export function Topo({ iniciais, aoAbrirChat }: Props) {
+export function Topo({ iniciais, simulando, aoAbrirChat }: Props) {
   return (
     <header className="topo">
       <span className="topo-avatar">{iniciais}</span>
+      {simulando && <span className="topo-simulando">Simulando {diaMesNumerico(simulando)}</span>}
       <div className="topo-icones">
         <span className="topo-icone">
           <Busca tamanho={26} />

@@ -12,9 +12,9 @@ const FILTROS: { id: Filtro; rotulo: string }[] = [
   { id: 'S', rotulo: 'Saídas' },
 ];
 
-type Props = { idUsuario: string; hoje: string };
+type Props = { idUsuario: string; hoje: string; dataRef?: string };
 
-export function Extrato({ idUsuario, hoje }: Props) {
+export function Extrato({ idUsuario, hoje, dataRef }: Props) {
   const [transacoes, setTransacoes] = useState<Transacao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
@@ -23,13 +23,13 @@ export function Extrato({ idUsuario, hoje }: Props) {
   useEffect(() => {
     let vivo = true;
     setErro(null);
-    buscarTransacoes(idUsuario)
+    buscarTransacoes(idUsuario, dataRef)
       .then((lista) => vivo && setTransacoes(lista))
       .catch((e) => vivo && setErro(mensagemDeErro(e)));
     return () => {
       vivo = false;
     };
-  }, [idUsuario, tentativa]);
+  }, [idUsuario, dataRef, tentativa]);
 
   // Agrupa por dia mantendo a ordem da API (mais recentes primeiro).
   const dias = useMemo(() => {

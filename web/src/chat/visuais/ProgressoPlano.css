@@ -1,0 +1,114 @@
+.progresso-plano {
+  --cor-status: var(--verde);
+  --fundo-status: #e3f3ea;
+  --cor-barra: var(--verde);
+}
+
+.progresso-plano.acima {
+  --cor-status: var(--vermelho);
+  --fundo-status: #fdecee;
+  --cor-barra: var(--laranja);
+}
+
+.progresso-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--texto-2);
+}
+
+.progresso-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--fundo-status);
+  color: var(--cor-status);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.progresso-trilho {
+  position: relative;
+  height: 12px;
+  margin: 12px 0 10px;
+  border-radius: 999px;
+  background: var(--fundo);
+}
+
+.progresso-barra {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--cor-barra);
+}
+
+/* Onde o gasto deveria estar hoje: um traço escuro que atravessa a barra. */
+.progresso-marcador {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--texto);
+}
+
+.progresso-numeros {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+
+.progresso-numeros div + div {
+  text-align: right;
+}
+
+.progresso-numeros dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--texto-2);
+}
+
+.progresso-numeros div + div dt {
+  justify-content: flex-end;
+}
+
+.progresso-numeros dd {
+  margin: 2px 0 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.progresso-legenda-marcador {
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--texto);
+}
+
+.progresso-limite {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--linha);
+  font-size: 0.82rem;
+  color: var(--texto-2);
+}
+
+.progresso-limite b {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.progresso-plano.compacto .progresso-trilho {
+  height: 10px;
+}

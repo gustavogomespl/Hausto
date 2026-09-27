@@ -1,0 +1,90 @@
+.tempo {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tempo-evento {
+  display: grid;
+  grid-template-columns: 40px 16px 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.tempo-evento time {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texto-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tempo-rotulo {
+  padding: 9px 0;
+}
+
+.tempo-evento b {
+  font-weight: 600;
+}
+
+/* Trilho vertical contínuo com um ponto por evento. */
+.tempo-marca {
+  position: relative;
+  align-self: stretch;
+}
+
+.tempo-marca::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--linha);
+}
+
+.tempo-evento:first-child .tempo-marca::before {
+  top: 50%;
+}
+
+.tempo-evento:last-child .tempo-marca::before {
+  bottom: 50%;
+}
+
+.tempo-marca::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid var(--texto-3);
+  box-sizing: border-box;
+}
+
+.tempo-evento.hoje .tempo-marca::after {
+  background: var(--marinho);
+  border-color: var(--marinho);
+}
+
+.tempo-evento.hoje time,
+.tempo-evento.hoje .tempo-rotulo {
+  color: var(--marinho);
+  font-weight: 700;
+}
+
+.tempo-evento.fatura .tempo-marca::after {
+  border-color: var(--laranja);
+}
+
+.tempo-evento.renda .tempo-marca::after {
+  border-color: var(--verde);
+  background: var(--verde);
+}
+
+.tempo-evento.renda b {
+  color: var(--verde);
+}

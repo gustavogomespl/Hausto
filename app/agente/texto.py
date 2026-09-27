@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
 from app.features import ContextoCliente
@@ -109,5 +110,20 @@ def decisao_registrada(escolha: dict[str, Any]) -> str:
         "Registrei apenas sua intenção na simulação. Nenhum pagamento foi feito. Confira as condições reais antes de decidir."
     )
 
+
+def pergunta_plano(p: dict[str, Any]) -> str:
+    fim = date.fromisoformat(p["fim"]).strftime("%d/%m")
+    reserva = f", guardar {brl(p['reserva'])}" if p.get("reserva") else ""
+    return (f"Aceita este plano até {fim}? Pagar {brl(p['pagamento_fatura'])} da fatura{reserva} e gastar até "
+            f"{brl(p['limite_diario'])} por dia no dia a dia. Se aceitar, eu te aviso quando os gastos passarem do combinado. (sim/não)")
+
+
+def plano_aceito(p: dict[str, Any]) -> str:
+    fim = date.fromisoformat(p["fim"]).strftime("%d/%m")
+    return (f"Plano ativo até {fim}. Vou acompanhar seus gastos do dia a dia e te aviso se passarem de "
+            f"{brl(p['limite_diario'])} por dia. Nada foi pago: o pagamento da fatura continua com você.")
+
+
+PLANO_RECUSADO = "Tudo bem, não ativei o plano. Quer ajustar algum valor?"
 
 DECISAO_CANCELADA = "Tudo bem, não registrei nada. Quer rever as opções ou mudar algum valor?"

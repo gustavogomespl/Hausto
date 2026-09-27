@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { buscarAvisos, buscarPainel, mensagemDeErro, type Aviso, type Origem, type Painel } from './api';
+import {
+  buscarAvisos,
+  buscarPainel,
+  buscarPlano,
+  mensagemDeErro,
+  type Aviso,
+  type Origem,
+  type Painel,
+  type Plano,
+} from './api';
 import { Chat, type PedidoAbertura } from './chat/Chat';
 import { Carregando, Falha } from './componentes/Estados';
 import { TabBar, type Aba } from './componentes/TabBar';
 import { Topo } from './componentes/Topo';
-import { iniciaisDe, lerSessao, salvarSessao, type SessaoSalva } from './sessao';
+import { comDataRef, iniciaisDe, lerSessao, salvarSessao, type SessaoSalva } from './sessao';
 import { Admin } from './telas/Admin';
 import { Extrato } from './telas/Extrato';
 import { Inicio } from './telas/Inicio';
@@ -18,7 +27,7 @@ type Tela = Aba | 'admin';
 export default function App() {
   const [sessao, setSessao] = useState<SessaoSalva | null>(lerSessao);
   const [tela, setTela] = useState<Tela>(() => (location.pathname === '/admin' ? 'admin' : 'inicio'));
-  // Muda a cada troca de cliente para remontar o app (e zerar a sessão do chat).
+  // Muda a cada troca de cliente ou de data da simulação para remontar o app (e zerar a sessão do chat).
   const [versao, setVersao] = useState(0);
 
   useEffect(() => {
@@ -33,16 +42,27 @@ export default function App() {
     setTela(destino);
   }
 
-  function escolher(nova: SessaoSalva) {
+  function trocarSessao(nova: SessaoSalva) {
     salvarSessao(nova);
     setSessao(nova);
     setVersao((v) => v + 1);
+  }
+
+  function escolher(nova: SessaoSalva) {
+    trocarSessao(nova);
     irPara('inicio');
   }
 
   let conteudo;
   if (tela === 'admin') {
-    conteudo = <Admin atual={sessao} aoEscolher={escolher} aoVoltar={sessao ? () => irPara('menu') : undefined} />;
+    conteudo = (
+      <Admin
+        atual={sessao}
+        aoEscolher={escolher}
+        aoMudarData={sessao ? (data) => trocarSessao(comDataRef(sessao, data)) : undefined}
+        aoVoltar={sessao ? () => irPara('menu') : undefined}
+      />
+    );
   } else if (!sessao) {
     conteudo = <Onboarding aoEscolher={(p) => escolher({ id_usuario: p.id_usuario, persona: p })} />;
   } else {
@@ -55,8 +75,8 @@ export default function App() {
 type PropsCliente = { sessao: SessaoSalva; aba: Aba; aoMudarAba: (aba: Tela) => void };
 
 function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
-  const id = sessao.id_usuario;
-  const [dados, setDados] = useState<{ painel: Painel; avisos: Aviso[] } | null>(null);
+  const { id_usuario: id, data_ref: dataRef } = sessao;
+  const [dados, setDados] = useState<{ painel: Painel; avisos: Aviso[]; plano: Plano | null } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
   const [dispensados, setDispensados] = useState<string[]>([]);
@@ -68,13 +88,17 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
   useEffect(() => {
     let vivo = true;
     setErro(null);
-    Promise.all([buscarPainel(id), buscarAvisos(id).catch(() => [] as Aviso[])])
-      .then(([painel, avisos]) => vivo && setDados({ painel, avisos }))
+    Promise.all([
+      buscarPainel(id, dataRef),
+      buscarAvisos(id, dataRef).catch(() => [] as Aviso[]),
+      buscarPlano(id, dataRef).catch(() => null),
+    ])
+      .then(([painel, avisos, plano]) => vivo && setDados({ painel, avisos, plano }))
       .catch((e) => vivo && setErro(mensagemDeErro(e)));
     return () => {
       vivo = false;
     };
-  }, [id, tentativa]);
+  }, [id, dataRef, tentativa]);
 
   useEffect(() => {
     rolagem.current?.scrollTo?.({ top: 0 });
@@ -87,8 +111,8 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
 
   const abrirAncora = (campo: Extract<Origem, { tipo: 'ancora' }>['campo']) => abrirChat({ tipo: 'ancora', campo });
   const abrirAviso = (aviso: Aviso) => abrirChat({ tipo: 'aviso', id: aviso.id });
-  const avisoDa = (tela: Aviso['tela']) =>
-    dados?.avisos.find((a) => a.tela === tela && !dispensados.includes(a.id));
+  const avisosDa = (tela: Aviso['tela']) =>
+    dados?.avisos.filter((a) => a.tela === tela && !dispensados.includes(a.id)) ?? [];
 
   function renderizarAba() {
     if (aba === 'pagamentos') return <Pagamentos />;
@@ -101,16 +125,24 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
         return (
           <Inicio
             painel={painel}
-            aviso={avisoDa('home')}
+            avisos={avisosDa('home')}
             aoAbrirAncora={abrirAncora}
             aoAbrirAviso={abrirAviso}
             aoDispensarAviso={(a) => setDispensados((d) => [...d, a.id])}
           />
         );
       case 'raiox':
-        return <RaioX painel={painel} aviso={avisoDa('raiox')} aoAbrirAncora={abrirAncora} aoAbrirAviso={abrirAviso} />;
+        return (
+          <RaioX
+            painel={painel}
+            plano={dados.plano}
+            aviso={avisosDa('raiox')[0]}
+            aoAbrirAncora={abrirAncora}
+            aoAbrirAviso={abrirAviso}
+          />
+        );
       case 'extrato':
-        return <Extrato idUsuario={id} hoje={painel.data_ref} />;
+        return <Extrato idUsuario={id} hoje={painel.data_ref} dataRef={dataRef} />;
     }
   }
 
@@ -119,11 +151,11 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
   return (
     <>
       <div className="rolagem" ref={rolagem}>
-        <Topo iniciais={iniciaisDe(sessao)} aoAbrirChat={() => abrirChat()} />
+        <Topo iniciais={iniciaisDe(sessao)} simulando={dataRef} aoAbrirChat={() => abrirChat()} />
         <div className="folha">{precisaPagina ? <div className="pagina">{renderizarAba()}</div> : renderizarAba()}</div>
       </div>
       <TabBar ativa={aba} aoMudar={aoMudarAba} />
-      <Chat idUsuario={id} aberto={chatAberto} pedido={pedido} aoFechar={() => setChatAberto(false)} />
+      <Chat idUsuario={id} dataRef={dataRef} aberto={chatAberto} pedido={pedido} aoFechar={() => setChatAberto(false)} />
     </>
   );
 }
