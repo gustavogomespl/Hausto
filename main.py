@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app import calculos, painel, personas
 from app.agente import construir_grafo, conversar
+from app.agente.grafo import ConflitoSessao
 from app.agente.modelos import extrator, modelo_chat, modo_llm
 from app.dados import repositorio
 from app.features import ContextoCliente, montar_contexto
@@ -37,12 +39,27 @@ RAIZ = Path(__file__).resolve().parent
 # Memória de sessão (checkpointer, um thread por conversa) e de perfil (store: decisões registradas).
 # Em produção: checkpointer persistente e store no BigQuery/Firestore.
 STORE = InMemoryStore()
+_LOCK_GRAFO = RLock()
 
 
 @lru_cache(maxsize=1)
-def grafo() -> Any:
+def _grafo_cache() -> Any:
     modelo = modelo_chat()
     return construir_grafo(modelo=modelo, extrator=extrator(modelo), checkpointer=InMemorySaver(), store=STORE)
+
+
+def grafo() -> Any:
+    # lru_cache sozinho pode construir duas instâncias no primeiro acesso concorrente.
+    with _LOCK_GRAFO:
+        return _grafo_cache()
+
+
+def _limpar_grafo() -> None:
+    with _LOCK_GRAFO:
+        _grafo_cache.cache_clear()
+
+
+grafo.cache_clear = _limpar_grafo
 
 
 def contexto_do_cliente(id_usuario: str, data_ref: date | None = None) -> ContextoCliente:
@@ -86,6 +103,7 @@ class PedidoChat(BaseModel):
     origem: Origem | None = None
     sessao_id: str | None = None
     data_ref: date | None = None
+    request_id: str | None = Field(None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
 
     @model_validator(mode="after")
     def _mensagem_ou_origem(self) -> PedidoChat:
@@ -111,6 +129,10 @@ class RespostaChat(BaseModel):
     sugestoes: list[str]
     ancora: dict[str, Any] | None
     pergunta: str | None
+    request_id: str = ""
+    resultados_especialistas: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    pendencias_impeditivas: list[str] = Field(default_factory=list)
+    pendencias_informativas: list[str] = Field(default_factory=list)
 
 
 # Web app (web/, React): build estático servido aqui. Sem build, cai na tela de teste antiga.
@@ -196,13 +218,17 @@ def decisoes(id_usuario: str) -> list[dict[str, Any]]:
 
 @app.post("/v1/chat", response_model=RespostaChat)
 def chat(pedido: PedidoChat) -> RespostaChat:
+    request_id = pedido.request_id or uuid.uuid4().hex
     sessao = pedido.sessao_id or uuid.uuid4().hex
     ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
     origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
-    turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem)
+    try:
+        turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem, request_id=request_id)
+    except ConflitoSessao as erro:
+        raise HTTPException(409, str(erro)) from erro
     log.info(
-        "turno usuario=%s sessao=%s etapa=%s tools=%s reescritas=%d",
-        ctx.id_usuario, sessao, turno.etapa, turno.tools, turno.reescritas,
+        "turno request_id=%s usuario=%s sessao=%s etapa=%s tools=%s reescritas=%d",
+        request_id, ctx.id_usuario, sessao, turno.etapa, turno.tools, turno.reescritas,
     )
     return RespostaChat(
         sessao_id=sessao,
@@ -221,4 +247,8 @@ def chat(pedido: PedidoChat) -> RespostaChat:
         sugestoes=turno.sugestoes,
         ancora=turno.ancora,
         pergunta=turno.pergunta,
+        request_id=turno.request_id,
+        resultados_especialistas=turno.resultados_especialistas,
+        pendencias_impeditivas=turno.pendencias_impeditivas,
+        pendencias_informativas=turno.pendencias_informativas,
     )
