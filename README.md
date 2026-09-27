@@ -51,9 +51,9 @@ $env:FONTE_DADOS = "mock"
 uv run --no-sync pytest -q
 ```
 
-Resultado da suíte completa após o rebase sobre a nova `origin/main`:
-**273 testes aprovados, 0 falhas e 0 skips**, em `mock/simulado`, com tracing
-desativado.
+Resultado da suíte completa: **396 testes aprovados** (`uv run --group evals pytest -q`),
+em `mock/simulado`, sem credenciais. A CI do GitHub (`.github/workflows/ci.yml`) roda
+lint + pytest e os testes e o build do front em toda PR.
 
 A suíte usa dados locais e modelos falsos. Cobre cálculos, atualização do
 contexto, pendências, confirmação, revisão, isolamento de sessões e rotas da
@@ -117,6 +117,13 @@ esclarecido. Por exemplo, `Meu salário atrasou` exige uma nova data completa
 de renda; ignorar a pergunta ou escolher uma opção não libera apresentação,
 proposta ou confirmação. Uma nova pendência não apaga a anterior. Avisos
 explicitamente informativos permanecem separados e não bloqueiam esse fluxo.
+
+## Educação financeira (Resolução Conjunta nº 8)
+
+O case pede que o agente siga a Resolução Conjunta nº 8 do CMN e do Banco Central. O mapeamento
+artigo por artigo (2º a 4º), com onde o Hausto cumpre cada ponto e como isso é verificado, está em
+[`docs/educacao_financeira.md`](docs/educacao_financeira.md). O indicador de compreensão
+(`GET /v1/indicadores/compreensao`) mede a efetividade pedida no art. 4º.
 
 ## O que foi construído
 

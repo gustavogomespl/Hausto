@@ -1,0 +1,46 @@
+# Testes em toda PR e push na main. Nada aqui chama Gemini ou BigQuery: os testes usam o mock
+# (data/) e o modo simulado, então a CI não precisa de credenciais. As evals com LLM rodam à parte
+# (evals/rodar.sh), porque custam e dependem do Vertex.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Lint
+        run: uvx ruff@0.14.10 check app evals main.py
+      - name: Testes
+        run: uv run --locked --group evals pytest -q
+
+  frontend:
+    name: Front (vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Testes
+        run: npm test
+      - name: Build
+        run: npm run build

@@ -43,6 +43,7 @@ class TurnoTrace:
     erro: str | None = None
     resposta_fixa: bool = False  # com LLM ligado: o modelo falhou e o grafo usou o texto fixo
     modo_resposta: str = ""  # llm | fallback | fallback_validacao | deterministico... (quando o grafo informa)
+    visuais: list[str] = field(default_factory=list)  # tipos dos gráficos que o turno mostrou
 
 
 @dataclass
@@ -50,6 +51,7 @@ class Execucao:
     id_usuario: str
     turnos: list[TurnoTrace]
     decisoes: list[dict[str, Any]]
+    plano: dict[str, Any] | None = None  # plano aceito pelo cliente no fim da conversa
 
     def para_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -69,15 +71,18 @@ def transcricao(ex: dict[str, Any]) -> str:
             linhas.append(f"  escolha calculada (regra, ao pedir confirmação): {json.dumps(t['escolha'], ensure_ascii=False)}")
         for tool in t["tools"]:
             saida = json.dumps(tool["saida"], ensure_ascii=False) if not isinstance(tool["saida"], str) else tool["saida"]
-            linhas.append(f"  tool: {tool['nome']}({json.dumps(tool['args'], ensure_ascii=False)}) → {saida[:400]}")
+            linhas.append(f"  tool: {tool['nome']}({json.dumps(tool['args'], ensure_ascii=False)}) → {saida[:1500]}")
         if t["dados"]:
             linhas.append(f"  dados informados até aqui: {json.dumps(t['dados'], ensure_ascii=False)}")
+        if t.get("visuais"):
+            linhas.append(f"  visuais: {', '.join(t['visuais'])}")
         linhas.append(f"  etapa: {t['etapa']}" + ("  (aguardando confirmação)" if t["pendente_confirmacao"] else ""))
         if t["erro"]:
             linhas.append(f"  ERRO: {t['erro']}")
         linhas.append(f"Agente: {t['resposta']}")
         blocos.append("\n".join(linhas))
     blocos.append(f"[Fim] decisões registradas: {json.dumps(ex['decisoes'], ensure_ascii=False) or '[]'}")
+    blocos.append(f"[Fim] plano ativo: {json.dumps(ex['plano'], ensure_ascii=False) if ex.get('plano') else 'nenhum'}")
     return "\n\n".join(blocos)
 
 
@@ -108,7 +113,8 @@ class AlvoGrafo:
         contexto = Contexto(id_usuario=ctx.id_usuario, data_ref=ctx.data_ref, cliente=ctx)
         turnos = [self._turno(grafo, config, contexto, m) for m in mensagens]
         decisoes = [item.value for item in store.search(("decisoes", ctx.id_usuario))]
-        return Execucao(id_usuario=ctx.id_usuario, turnos=turnos, decisoes=decisoes)
+        plano = store.get(("planos", ctx.id_usuario), "ativo")
+        return Execucao(id_usuario=ctx.id_usuario, turnos=turnos, decisoes=decisoes, plano=plano.value if plano else None)
 
     def _turno(self, grafo: Any, config: dict, contexto: Contexto, mensagem: str) -> TurnoTrace:
         t = TurnoTrace(mensagem=mensagem)
@@ -148,6 +154,7 @@ class AlvoGrafo:
         if "pedir_confirmacao" in t.nos:
             t.escolha = estado.get("escolha")
         t.modo_resposta = estado.get("modo_resposta", "")
+        t.visuais = [v.get("tipo", "") for v in estado.get("visuais") or []]
         if t.modo_resposta:  # o grafo informa de onde veio a resposta
             t.resposta_fixa = self.modelo is not None and t.modo_resposta in {"fallback", "fallback_validacao"}
         elif self.modelo is not None and "conversa" in t.nos and estado.get("comparacao"):

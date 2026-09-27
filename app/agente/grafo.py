@@ -68,6 +68,10 @@ PROMPT = (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8")
 ACOLHER = ("O cliente parece aflito: comece com uma frase curta de acolhimento, sem culpa, e siga ajudando. "
            "Não diga para ficar tranquilo nem que vai dar tudo certo.")
 BLOQUEIA = frozenset({"injecao", "ofensa_sem_pedido", "fora_do_escopo"})
+# Checagem de compreensão (ficha: "explicar impactos e checar a compreensão"; métrica 3).
+REEXPLICAR = ("O cliente pediu para explicar de novo: explique mais simples, com uma comparação do dia a dia, "
+              "em até 4 linhas.")
+FECHAR_SEM_PERGUNTA = "Termine sem pergunta: o sistema pergunta em seguida se ficou claro."
 MAX_REESCRITAS = 1  # depois disso, a resposta segura (só números das tools) substitui a do modelo
 
 # Papéis lógicos no mesmo StateGraph; nenhum motor/agente financeiro novo.
@@ -306,7 +310,20 @@ def instrucao_do_turno(request: ModelRequest) -> str:
         .replace("{fatos}", json.dumps(estado.get("comparacao"), ensure_ascii=False))
         .replace("{correcao}", f"\nCORREÇÃO: {correcao}" if correcao else "")
         + (f"\n{ACOLHER}" if estado.get("acolher") else "")
+        + (f"\n{REEXPLICAR}" if estado.get("reexplicar") else "")
+        + (f"\n{FECHAR_SEM_PERGUNTA}" if estado.get("perguntar_compreensao") else "")
     )
+
+
+def _registrar_compreensao(runtime: Runtime[Contexto], estado: Estado, entendeu: bool) -> None:
+    """Indicador de efetividade (métrica 3 da ficha; Resolução Conjunta nº 8, art. 4º, II)."""
+    tentativa = estado.get("compreensao_tentativas", 0)
+    logs.evento(log, f"[AGENTE][COMPREENSAO] {'entendeu' if entendeu else 'pediu para explicar de novo'} (vez {tentativa})",
+                entendeu=entendeu, tentativa=tentativa)
+    if runtime.store is not None:
+        runtime.store.put(("compreensao", runtime.context.carregar().id_usuario), uuid.uuid4().hex,
+                          {"entendeu": entendeu, "tentativa": tentativa, "turno_id": estado.get("turno_id"),
+                           "sessao_id": estado.get("sessao_id"), "quando": datetime.now(UTC).isoformat(timespec="seconds")})
 
 
 def _com_pendencias(resposta: str, estado: Estado) -> str:
@@ -361,7 +378,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                  "eventos": estado.get("eventos_entrada", []), "eventos_entrada": [],
                  "resultados_especialistas": {}, "resultados_tools": [],
                  "revisao": {}, "erro_calculo": None, "modo_resposta": "deterministico",
-                 "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None, "risco": None}
+                 "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None, "risco": None,
+                 "reexplicar": False, "perguntar_compreensao": False}
         turno["eventos"] = _evento({**estado, **turno}, "guardrail", "concluido")
         if parece_injecao(_texto_do_cliente(estado)):
             return {**turno, "eventos": _evento({**estado, **turno, "eventos": []}, "guardrail", "bloqueado"), "etapa": "bloqueado", "messages": [AIMessage(RESPOSTA_INJECAO)]}
@@ -369,6 +387,16 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
 
     def atualizar_estado(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
         mensagem = _texto_do_cliente(estado)
+        compreensao: dict[str, Any] = {}
+        if estado.get("aguardando_compreensao"):
+            compreensao = {"aguardando_compreensao": False}
+            chip = mensagem.strip().lower().rstrip("!.?")
+            if chip in ("entendi", "explica de novo"):
+                _registrar_compreensao(runtime, estado, entendeu=chip == "entendi")
+                if chip == "entendi":  # fecha sem LLM
+                    return {**compreensao, "etapa": "compreensao_ok", "campo_da_abertura": None,
+                            "messages": [AIMessage(texto.ENTENDEU)]}
+                compreensao["reexplicar"] = True
         # Resposta curta à pergunta sobre um gasto sem repetir o substantivo.
         if (estado.get("campo_pergunta_aberta") == "despesas" and mensagem.lstrip().lower().startswith("r$")
                 and pode_contextualizar_despesa(estado, runtime.context.carregar())):
@@ -391,7 +419,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         try:
             # Aberto por aviso ou valor ✦, a fala é o texto do botão: não há fato para extrair (nem LLM a esperar).
             inicio = time.perf_counter()
-            e = Extracao() if estado.get("origem") else extrator(mensagem)
+            e = Extracao() if estado.get("origem") or compreensao.get("reexplicar") else extrator(mensagem)
             campos = sorted(e.model_dump(exclude_defaults=True))
             logs.evento(log, f"[AGENTE][EXTRACAO] {', '.join(campos) if campos else 'nada novo na mensagem'} ({_seg(_ms(inicio))})",
                         campos=campos, ms=_ms(inicio))
@@ -415,7 +443,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                                "precisa_dados" if _impeditivas(atual) else "ok")
         atualizacao["resultados_especialistas"] = {"contexto_relacionamento": resultado}
         atualizacao["eventos"] = _evento(atual, "contexto", "atualizado" if atualizacao["dados_mudaram"] else "mantido", evidencias=resultado["evidencias"])
-        return atualizacao
+        return {**atualizacao, **compreensao}
 
     def perguntar_cliente(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
         pendencias = _impeditivas(estado)
@@ -501,6 +529,10 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         if agente is None:
             return {"rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]), "modo_resposta": "simulado"}
         historico = list(estado["messages"])  # só falas: tool calls ficam dentro do subgrafo
+        # "Ficou claro?" na primeira explicação e, se pediu para explicar de novo, mais uma vez.
+        tentativas = estado.get("compreensao_tentativas", 0)
+        perguntar = estado["etapa"] in ("explicar_opcoes", "informar_deficit") and (
+            tentativas == 0 or (estado.get("reexplicar", False) and tentativas == 1))
         inicio = time.perf_counter()
         try:
             saida = agente.invoke(
@@ -513,6 +545,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                     "dados_confirmados": estado["dados"],
                     "despesas_confirmadas": despesas_confirmadas(estado),
                     "acolher": estado.get("risco") in ("aflicao", "crise"),
+                    "reexplicar": estado.get("reexplicar", False),
+                    "perguntar_compreensao": perguntar,
                 },
                 context=runtime.context,
                 config={"metadata": {"request_id": estado["request_id"], "turno_id": estado["turno_id"],
@@ -550,7 +584,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             # Toda proposta mostra o caixa fechando com o plano, sem depender do modelo lembrar.
             visuais_turno.append(plano.caixa_do_plano(ctx, estado["comparacao"], proposta))
         evidencia_tools = {"resultados_tools": resultados_tools, "eventos": eventos, "plano_proposto": proposta,
-                           "visuais": visuais_turno}
+                           "visuais": visuais_turno, "perguntar_compreensao": perguntar and not proposta}
         final = next((m.text for m in reversed(novas) if isinstance(m, AIMessage) and m.text), "")
         if not final.strip():  # resposta vazia (ex.: filtro de segurança do Gemini): o cliente recebe os números em texto fixo
             logs.evento(log, "[AGENTE][GEMINI] resposta vazia; usando a resposta fixa", logging.WARNING, etapa=estado["etapa"])
@@ -603,7 +637,13 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             if not veredito.aprovada:
                 apontado = veredito.problema or "tom ou conteúdo inadequado para o cliente"
         if not suspeitos and not problemas and not apontado:
-            return {**_revisado(estado, revisao, "revisao_texto"), "messages": [AIMessage(_com_pendencias(estado["rascunho"], estado))], "numeros_sem_fonte": []}
+            final = _com_pendencias(estado["rascunho"], estado)
+            checagem = {}
+            if estado.get("perguntar_compreensao") and estado.get("modo_resposta") == "llm":
+                final = f"{final}\n{texto.PERGUNTA_COMPREENSAO}"
+                checagem = {"aguardando_compreensao": True, "sugestoes": texto.CHIPS_COMPREENSAO,
+                            "compreensao_tentativas": estado.get("compreensao_tentativas", 0) + 1}
+            return {**_revisado(estado, revisao, "revisao_texto"), **checagem, "messages": [AIMessage(final)], "numeros_sem_fonte": []}
         reescritas = estado["reescritas"] + 1
         if suspeitos:
             logs.evento(log, f"[AGENTE][VALIDACAO] {len(suspeitos)} números sem fonte (tentativa {reescritas})", logging.WARNING,
@@ -702,7 +742,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return END if estado["etapa"] == "bloqueado" else "atualizar_estado"
 
     def dados_suficientes(estado: Estado, runtime: Runtime[Contexto]) -> str:
-        if estado["etapa"] == "bloqueado":
+        if estado["etapa"] in ("bloqueado", "compreensao_ok"):
             return END
         if _impeditivas(estado):
             return "perguntar_cliente"

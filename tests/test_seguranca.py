@@ -174,7 +174,7 @@ def test_juiz_reprova_e_a_resposta_e_reescrita_uma_vez():
     modelo = _gravador(AIMessage("Você caiu porque foi descuidado, né?"), _veredito(False, "tom de culpa"),
                        AIMessage("Isso acontece com muita gente. Quer ver sua fatura com calma?"))
     t = conversar(_grafo("golpe", modelo), ctx_padrao(), "s1", "caí num golpe")
-    assert t.reescritas == 1 and t.resposta.endswith("Isso acontece com muita gente. Quer ver sua fatura com calma?")
+    assert t.reescritas == 1 and "Isso acontece com muita gente. Quer ver sua fatura com calma?" in t.resposta
     assert "tom de culpa" in modelo.vistas[2][0].text  # a correção do juiz chega ao prompt da reescrita
 
 

@@ -26,10 +26,10 @@ class ModeloFalso(FakeMessagesListChatModel):
 # ------------------------------------------------------------------ roteiros
 
 
-def test_sao_40_roteiros_com_ids_unicos_e_turnos():
+def test_sao_48_roteiros_com_ids_unicos_e_turnos():
     roteiros = carregar_roteiros()
-    assert len(roteiros) == 40
-    assert len({r["id"] for r in roteiros}) == 40
+    assert len(roteiros) == 48
+    assert len({r["id"] for r in roteiros}) == 48
     assert all(r["turnos"] and all(t["mensagem"] for t in r["turnos"]) for r in roteiros)
 
 
@@ -38,7 +38,7 @@ def test_roteiros_cobrem_todas_as_categorias_do_design():
     assert cats == {
         "explicar_opcoes": 4, "hipotese_tool": 4, "dado_novo": 5, "insuficiencia": 3,
         "fatura_desconhecida": 2, "escolha_confirmacao": 4, "guardrail": 8, "falso_positivo": 4, "fora_escopo": 2,
-        "outro_cliente": 1, "letramento": 2, "nova_despesa": 1,
+        "outro_cliente": 1, "letramento": 3, "plano": 4, "sem_folga": 2, "visual": 2,
     }
 
 
@@ -156,11 +156,11 @@ def _qualquer_cliente(monkeypatch):
     monkeypatch.setattr(gerar_testes, "escolher_cliente", lambda perfil, semente: ctx)
 
 
-def test_criar_testes_gera_40_casos_com_asserts(monkeypatch):
+def test_criar_testes_gera_48_casos_com_asserts(monkeypatch):
     _qualquer_cliente(monkeypatch)
     monkeypatch.setenv("EVALS_JUIZ", "1")
     testes = criar_testes()
-    assert len(testes) == 40
+    assert len(testes) == 48
     t = testes[0]
     assert t["vars"]["id_usuario"] and t["vars"]["roteiro"]
     tipos = [a["type"] for a in t["assert"]]
@@ -204,3 +204,52 @@ def test_transcricao_mostra_a_escolha_calculada_na_confirmacao():
     ex = AlvoGrafo(modelo=None).rodar(ctx, ["vou pagar R$ 500 agora"])
     assert ex.turnos[0].escolha["custo_total"] > 0
     assert "escolha calculada" in ex.transcricao()
+
+
+# ------------------------------------------------------------------ visuais e plano
+
+
+def test_alvo_captura_visuais_e_checa_os_esperados():
+    ctx = selecao.escolher_cliente({"status": "ok"}, "r1", REPO)
+    modelo = ModeloFalso(responses=[
+        AIMessage("", tool_calls=[{"name": "mostrar_visual", "args": {"tipo": "comparar_opcoes"}, "id": "v1"}]),
+        AIMessage("Veja no gráfico quanto custa cada forma de pagar. Qual prefere?"),
+    ])
+    ex = AlvoGrafo(modelo=modelo, extrator=extrair_por_regras).rodar(ctx, ["me mostra as opções"])
+    assert ex.turnos[0].visuais == ["comparar_opcoes"] and "visuais: comparar_opcoes" in ex.transcricao()
+    roteiro = {"id": "r1", "turnos": [{"mensagem": "me mostra as opções", "espera": {"visuais": ["comparar_opcoes"]}}]}
+    assert checagens.avaliar_deterministico(roteiro, ex.para_dict())["pass"]
+    roteiro["turnos"][0]["espera"]["visuais"] = ["caixa_ate_renda"]
+    r = checagens.avaliar_deterministico(roteiro, ex.para_dict())
+    assert not r["pass"] and "caixa_ate_renda" in r["reason"]
+
+
+def _plano_aceito():
+    from test_planejador import _plano_que_cabe, pelo_planejador
+    ctx = selecao.escolher_cliente({"status": "ok"}, "r1", REPO)
+    _, s, args = _plano_que_cabe(ctx)
+    modelo = pelo_planejador(("propor_plano", args), final="Montei um plano até a renda.")
+    ex = AlvoGrafo(modelo=modelo, extrator=extrair_por_regras).rodar(ctx, ["monta um plano pra mim", "sim"])
+    return ex, s
+
+
+def test_checagem_do_plano_proposto_e_aceito():
+    ex, s = _plano_aceito()
+    roteiro = {"id": "r1", "turnos": [
+        {"mensagem": "monta um plano pra mim", "espera": {"pendente": True, "pendente_minimo": {"limite_diario": s["limite_maximo"]}}},
+        {"mensagem": "sim", "espera": {"etapa": "plano_aceito"}}],
+        "espera_final": {"plano_ativo": True}}
+    assert checagens.avaliar_deterministico(roteiro, ex.para_dict())["pass"]
+    assert "plano ativo" in ex.transcricao()
+    roteiro["espera_final"] = {"plano_ativo": False}
+    roteiro["turnos"][0]["espera"]["pendente_minimo"] = {"reserva": 300}
+    r = checagens.avaliar_deterministico(roteiro, ex.para_dict())
+    assert not r["pass"] and "plano ativo" in r["reason"] and "reserva" in r["reason"]
+
+
+def test_transcricao_mostra_a_saida_do_contexto_inteira_para_o_juiz():
+    from evals.alvo import transcricao
+    saida = {"historico_faturas": ["x" * 900], "onde_da_para_cortar": [{"categoria": "Delivery", "por_mes": 200.24}]}
+    turno = {"mensagem": "onde cortar?", "nos": [], "tools": [{"nome": "obter_contexto_cliente", "args": {}, "saida": saida}],
+             "dados": {}, "etapa": "informar_deficit", "pendente_confirmacao": None, "erro": None, "resposta": "ok"}
+    assert "200.24" in transcricao({"turnos": [turno], "decisoes": []})

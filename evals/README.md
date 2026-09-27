@@ -1,6 +1,6 @@
 # Evals do agente de fatura
 
-40 roteiros multiturno (`roteiros.yaml`), cada um rodado com um cliente real da base escolhido
+48 roteiros multiturno (`roteiros.yaml`), cada um rodado com um cliente real da base escolhido
 pelo perfil (persona, caixa suficiente ou não, fatura estimável). Runner e painel: promptfoo.
 
 ## Rodar
@@ -17,7 +17,7 @@ uv run --group evals pytest tests/test_evals.py  # testes do próprio harness
 
 | Métrica no painel | Como | Aprova quando |
 |---|---|---|
-| `estado` | Python, sem LLM | etapa, dados extraídos, recálculo, confirmação, números sem fonte, trechos e decisão final batem com `espera` |
+| `estado` | Python, sem LLM | etapa, dados extraídos, recálculo, confirmação, números sem fonte, trechos, visuais, decisão e plano no fim batem com `espera` |
 | `trajetoria_tools` | agentevals (`strict`, `unordered`, `subset`, `superset`) | as tools de cada turno batem com `espera.tools` |
 | `juiz_trajetoria` | llm-rubric, Gemini 3.8 Flash | nota ≥ 0,8: tools certas, na hora certa, argumentos coerentes |
 | `juiz_fidelidade` | llm-rubric | nota ≥ 0,8: números e afirmações vêm das tools, sem inventar |
@@ -39,4 +39,4 @@ Se o novo agente usar outros nomes de etapa, mapeie para os de `roteiros.yaml` n
 
 ## Lacunas conhecidas (devem falhar hoje)
 
-- Nenhuma no momento. Roteiros que dependem de comportamento novo: c03 (escolha bloqueada) e n01 (pergunta é hipótese).
+- Nenhuma no momento. Roteiros que dependem de comportamento novo: c03 (escolha bloqueada).

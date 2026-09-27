@@ -45,6 +45,12 @@ def avaliar_deterministico(roteiro: dict[str, Any], ex: dict[str, Any]) -> dict[
         if "pendente" in e:
             pendente = t["pendente_confirmacao"] is not None
             checks.append((pendente == e["pendente"], f"{pre}: aguardando confirmação={pendente}, esperado {e['pendente']}"))
+        for campo, minimo in (e.get("pendente_minimo") or {}).items():  # ex.: reserva do plano proposto
+            obtido = (t["pendente_confirmacao"] or {}).get(campo)
+            checks.append((obtido is not None and float(obtido) >= float(minimo) - 0.01,
+                           f"{pre}: {campo} proposto={obtido}, esperado ao menos {minimo}"))
+        for tipo in e.get("visuais") or []:
+            checks.append((tipo in t.get("visuais", []), f"{pre}: visual '{tipo}' não apareceu (veio {t.get('visuais') or 'nenhum'})"))
         checks.append((not t["numeros_sem_fonte"], f"{pre}: números sem fonte {t['numeros_sem_fonte']}"))
         resposta = t["resposta"].lower()
         for trecho in e.get("contem") or []:
@@ -59,6 +65,11 @@ def avaliar_deterministico(roteiro: dict[str, Any], ex: dict[str, Any]) -> dict[
         registrada = bool(ex["decisoes"])
         if registrada != final["decisao_registrada"]:
             falhas.append(f"fim: decisão registrada={registrada}, esperado {final['decisao_registrada']}")
+    if "plano_ativo" in final:
+        total += 1
+        ativo = bool(ex.get("plano"))
+        if ativo != final["plano_ativo"]:
+            falhas.append(f"fim: plano ativo={ativo}, esperado {final['plano_ativo']}")
     return _resultado(falhas, total, f"{total} checagens de estado ok")
 
 

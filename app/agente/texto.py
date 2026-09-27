@@ -80,8 +80,14 @@ def com_avisos(resposta: str, risco: str | None, dado_ocultado: bool) -> str:
     return "\n".join([*(a for a in avisos if a), resposta])
 
 
+# Checagem de compreensão: só pergunta se ficou claro, sem tom de prova.
+PERGUNTA_COMPREENSAO = "Ficou claro?"
+CHIPS_COMPREENSAO = ["Entendi", "Explica de novo"]
+ENTENDEU = "Que bom! Quando quiser, é só me dizer como prefere pagar ou perguntar o que ficou faltando."
+
 SUGESTOES = {
     "bloqueado": ["Minha fatura", "Conferir meu saldo"],
+    "compreensao_ok": ["Minha fatura", "Aconteceu um imprevisto"],
     "explicar_opcoes": ["Quero pagar tudo", "E se eu pagar o mínimo?", "Aconteceu um imprevisto"],
     "informar_deficit": ["Como pagar menos juros?", "Onde dá para cortar?", "Conferir meu saldo", "Aconteceu um imprevisto"],
     "escolha_incompativel": ["Conferir meu saldo", "Rever a reserva"],
