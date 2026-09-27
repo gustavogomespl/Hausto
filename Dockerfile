@@ -20,7 +20,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8080 \
-    FONTE_DADOS=mock
+    FONTE_DADOS=mock \
+    LOG_FORMATO=json
 RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin agente
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
@@ -30,4 +31,4 @@ COPY data ./data
 COPY --from=web /web/dist ./web/dist
 USER 10001:10001
 EXPOSE 8080
-CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips '*'"]
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips '*' --no-access-log"]
