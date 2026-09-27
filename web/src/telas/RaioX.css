@@ -259,3 +259,146 @@
   margin: 2px 0 0;
   font-weight: 700;
 }
+
+/* Balões do topo: "Posso comprar?" e a meta */
+.rx-baloes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rx-balao {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rx-balao p,
+.rx-balao-rotulo {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: var(--texto-2);
+}
+
+.rx-balao strong {
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
+.rx-balao-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--marinho);
+  color: #fff;
+}
+
+.rx-balao-barra {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 99px;
+  background: var(--linha);
+  overflow: hidden;
+}
+
+.rx-balao-barra span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--laranja);
+}
+
+/* Meta configurável */
+.rx-balao-acao {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+}
+
+.rx-balao-acao:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
+}
+
+.rx-balao-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--texto-2);
+}
+
+.rx-balao-barra {
+  display: block;
+}
+
+.rx-meta-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(15 18 40 / 45%);
+}
+
+.rx-meta-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.rx-meta-form h3 {
+  margin: 0;
+}
+
+.rx-meta-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--texto-2);
+}
+
+.rx-meta-form input {
+  padding: 12px;
+  border: 1px solid var(--linha);
+  border-radius: 10px;
+  font: inherit;
+  color: var(--texto);
+}
+
+.rx-meta-botoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.rx-meta-cancelar {
+  padding: 10px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--texto-2);
+  cursor: pointer;
+}
+
+.rx-meta-form .botao-laranja:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rx-meta-erro {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--vermelho);
+}

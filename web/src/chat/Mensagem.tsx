@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Visual as TipoVisual } from '../api';
-import { Brilho, Joinha, Som } from '../componentes/Icones';
+import { Brilho, Joinha } from '../componentes/Icones';
+import { BotaoOuvir } from './Ouvir';
 import { Visual } from './Visual';
 
 /** Texto do Hausto: cada linha vira um parágrafo; "- " vira item; **negrito** e ✦ em laranja. */
@@ -36,10 +37,10 @@ export function MensagemHausto({ texto, visuais = [] }: { texto: string; visuais
       {visuais.map((v, i) => (
         <Visual key={i} visual={v} />
       ))}
-      <div className="msg-reacoes" aria-hidden="true">
+      <div className="msg-reacoes">
         <Joinha tamanho={22} />
         <Joinha tamanho={22} style={{ transform: 'rotate(180deg)' }} />
-        <Som tamanho={22} />
+        <BotaoOuvir texto={[texto, ...visuais.map((v) => `Gráfico: ${v.titulo}. ${v.resumo}`)].join('\n')} />
       </div>
     </div>
   );

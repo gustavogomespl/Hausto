@@ -1,4 +1,4 @@
-export type Persona = { id: 'maria' | 'carla' | 'jonas'; nome: string; iniciais: string; idade: number; cidade: string; frase: string; renda: 'INSS' | 'CLT' | 'MEI'; cor: string; id_usuario: string };
+export type Persona = { id: 'maria' | 'carla' | 'jonas'; nome: string; iniciais: string; idade: number; cidade: string; frase: string; renda: 'INSS' | 'CLT' | 'PJ'; cor: string; id_usuario: string };
 // GET /v1/personas -> Persona[]
 
 export type Painel = {
@@ -11,6 +11,10 @@ export type Painel = {
     parcelas: { total_mes: number; itens: { descricao: string; valor: number; atual: number; total: number }[] };
     categorias: { categoria: string; valor: number }[];
     faturas: { mes: string /* YYYY-MM */; modo: 'integral' | 'parcial' | 'minimo' }[];
+    meta?:
+      | { tipo: 'sair_do_vermelho'; falta: number }
+      | { tipo: 'reserva'; alvo: number; guardado: number; pct: number }
+      | { tipo: 'personalizada'; nome: string; alvo: number; guardado: number; pct: number };
   };
 };
 // GET /v1/clientes/{id}/painel?data_ref=YYYY-MM-DD -> Painel
@@ -110,6 +114,9 @@ export const buscarTransacoes = (id: string, dataRef?: string) =>
   pedir<Transacao[]>(`${cliente(id)}/transacoes${consulta({ limite: 200, data_ref: dataRef })}`);
 export const buscarPlano = (id: string, dataRef?: string) =>
   pedir<Plano | null>(`${cliente(id)}/plano${consulta({ data_ref: dataRef })}`);
+export type MetaDoCliente = { nome: string; valor: number };
+export const salvarMeta = (id: string, meta: MetaDoCliente) =>
+  pedir<MetaDoCliente>(`${cliente(id)}/meta`, { method: 'PUT', body: JSON.stringify(meta) });
 export const listarClientes = () => pedir<ClienteResumo[]>('/v1/clientes?limite=50');
 export const conversar = (pedido: PedidoChat) =>
   pedir<RespostaChat>('/v1/chat', { method: 'POST', body: JSON.stringify(pedido) });

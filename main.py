@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
-from pydantic import BaseModel, Field, model_validator
+from pydantic import ConfigDict, BaseModel, Field, model_validator
 
 from app import calculos, logs, painel, personas, plano
 from app.agente import construir_grafo, conversar
@@ -182,7 +182,24 @@ def listar_personas() -> list[dict[str, Any]]:
 @app.get("/v1/clientes/{id_usuario}/painel")
 def painel_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str, Any]:
     """Tudo o que a Home e o Raio-X mostram, com os mesmos números do chat."""
-    return painel.montar(contexto_do_cliente(id_usuario, data_ref))
+    meta = STORE.get(("metas", id_usuario), "ativa")
+    return painel.montar(contexto_do_cliente(id_usuario, data_ref), meta.value if meta else None)
+
+
+class MetaDoCliente(BaseModel):
+    """Meta que o cliente define no Raio-X (ex.: casa, carro, reserva)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " não vira meta sem nome
+    nome: str = Field(min_length=1, max_length=40)
+    valor: float = Field(gt=0, le=10_000_000)
+
+
+@app.put("/v1/clientes/{id_usuario}/meta")
+def salvar_meta(id_usuario: str, meta: MetaDoCliente) -> dict[str, Any]:
+    """Grava a meta do cliente; o painel passa a mostrar o quanto dela o saldo já cobre."""
+    registro = {"nome": meta.nome, "valor": round(meta.valor, 2)}
+    STORE.put(("metas", id_usuario), "ativa", registro)
+    return registro
 
 
 @app.get("/v1/clientes/{id_usuario}/avisos")

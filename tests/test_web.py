@@ -35,7 +35,7 @@ def test_renda_vem_da_categoria_da_entrada():
         return [replace(t, micro=micro) if t.tipo == "E" else t for t in base]
     assert painel.renda_do(com("Beneficio INSS")) == "INSS"
     assert painel.renda_do(com("Salario CLT")) == "CLT"
-    assert painel.renda_do(com("Recebimentos diversos")) == "MEI"
+    assert painel.renda_do(com("Recebimentos diversos")) == "PJ"  # sem salário nem benefício: vive de recebimentos avulsos
 
 
 # ------------------------------------------------------------------ painel
@@ -267,6 +267,24 @@ def test_origem_durante_confirmacao_descarta_a_proposta():
     t = conversar(grafo, ctx, "s1", origem={"tipo": "ancora", "campo": "saldo"})
     assert t.pendente_confirmacao is None and t.ancora["rotulo"] == "Saldo"
     assert store.search(("decisoes", ctx.id_usuario)) == []
+
+
+def test_persona_usa_o_cliente_mais_negativado_fixado_quando_ele_esta_na_base(monkeypatch):
+    fixado = REPO.listar_clientes()[-1]
+    monkeypatch.setattr(personas, "PERSONAS", [{**p, "id_preferido": fixado if p["id"] == "jonas" else "nao-existe"}
+                                               for p in personas.PERSONAS])
+    personas._resolver.cache_clear()
+    try:
+        ps = {p["id"]: p for p in personas.resolver(REPO)}
+        assert ps["jonas"]["id_usuario"] == fixado  # fixado e presente: vale ele
+        assert ps["maria"]["id_usuario"] != "nao-existe"  # fixado ausente (ex.: mock): cai na busca por afinidade
+        assert all("id_preferido" not in p for p in ps.values())  # detalhe interno não vai para a API
+    finally:
+        personas._resolver.cache_clear()
+
+
+def test_personas_sao_aposentado_clt_e_pj():
+    assert [p["renda"] for p in personas.PERSONAS] == ["INSS", "CLT", "PJ"]
 
 
 # ------------------------------------------------------------------ revisão: painel, personas, API

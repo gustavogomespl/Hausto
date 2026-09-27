@@ -79,3 +79,5 @@ export const Fechar = svg(<path d="M6 6l12 12M18 6 6 18" />);
 export const Enviar = svg(<path d="M5 12h14M13 6l6 6-6 6" />);
 export const Joinha = svg(<path d="M7.5 10.5V20h-3v-9.5zM7.5 10.5 11 3.5a2.3 2.3 0 0 1 2.3 2.3V9h5a2 2 0 0 1 2 2.3l-1.2 6.9a2 2 0 0 1-2 1.8H7.5" />);
 export const Som = svg(<path d="M11 5.5 6.5 9H3.5v6h3l4.5 3.5zM15.5 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />);
+export const Sacola = svg(<path d="M6 8h12l-1 12H7zM9 8V6.5a3 3 0 0 1 6 0V8" />);
+export const Cofre = svg(<path d="M12 3.5 19.5 6v5.5c0 4.5-3.2 7.8-7.5 9-4.3-1.2-7.5-4.5-7.5-9V6zM9 12l2 2 4-4" />);

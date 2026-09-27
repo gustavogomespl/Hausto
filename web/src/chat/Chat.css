@@ -165,6 +165,25 @@
   color: var(--texto-2);
 }
 
+.msg-ouvir {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.msg-ouvir[aria-pressed='true'] {
+  color: var(--laranja);
+}
+
+.msg-ouvir:focus-visible {
+  outline: 2px solid var(--laranja);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .msg-erro {
   padding: 12px 14px;
   border-radius: 14px;

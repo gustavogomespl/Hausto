@@ -3,6 +3,7 @@ import {
   buscarAvisos,
   buscarPainel,
   buscarPlano,
+  salvarMeta,
   mensagemDeErro,
   type Aviso,
   type Origem,
@@ -139,6 +140,10 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
             aviso={avisosDa('raiox')[0]}
             aoAbrirAncora={abrirAncora}
             aoAbrirAviso={abrirAviso}
+            aoSalvarMeta={async (meta) => {
+              await salvarMeta(id, meta);
+              setTentativa((n) => n + 1); // recarrega o painel com a meta nova
+            }}
           />
         );
       case 'extrato':
