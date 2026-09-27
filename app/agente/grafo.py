@@ -9,10 +9,12 @@ Só `atualizar_estado` (extração) e `conversa` (create_agent + tools) usam LLM
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,12 +24,13 @@ from typing import Any
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
-from app import calculos
+from app import calculos, logs
 from app.agente import aberturas, texto
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, referencia
 from app.agente.contexto_financeiro import comparar_contexto
@@ -55,8 +58,78 @@ def _evento(estado: Estado, no: str, status: str, **detalhes: Any) -> list[dict[
     evento = {"turno_id": estado.get("turno_id"), "no": no, "status": status,
               "versao_contexto": estado.get("versao_contexto", 0),
               "quando": datetime.now(UTC).isoformat(timespec="milliseconds"), **detalhes}
-    log.info("evento_hausto %s", json.dumps(evento, ensure_ascii=False))
+    logs.evento(log, "evento_hausto", logging.DEBUG, **evento)
     return [*estado.get("eventos", []), evento]
+
+
+def _ms(inicio: float) -> int:
+    return round((time.perf_counter() - inicio) * 1000)
+
+
+def _seg(ms: int) -> str:
+    return f"{ms / 1000:.1f} s".replace(".", ",")
+
+
+def _resumo_calculo(s: dict[str, Any]) -> str:
+    c = s.get("comparacao")
+    if not c:
+        return f"sem cálculo ({s.get('erro_calculo') or s.get('etapa')})"
+    return f"fatura {texto.brl(c['valor_fatura'])} · disponível {texto.brl(c['disponivel_para_fatura'])} · status {c['status']}"
+
+
+# Uma frase por passo do agente, no estilo "[AGENTE][PASSO] o que aconteceu" (campos vão no JSON).
+PASSOS: dict[str, tuple[str, Any]] = {
+    "guardrail": ("GUARDRAIL", lambda s: "injeção bloqueada" if s.get("etapa") == "bloqueado" else "mensagem liberada"),
+    "atualizar_estado": ("CONTEXTO", lambda s: f"versão {s.get('versao_contexto')}, {'mudou' if s.get('dados_mudaram') else 'sem mudança'}"
+                         + (f", {len(s['pendencias'])} pendência(s)" if s.get("pendencias") else "")),
+    "perguntar_cliente": ("PERGUNTA", lambda s: "pede ao cliente o que falta"),
+    "calcular_opcoes": ("CALCULO", _resumo_calculo),
+    "revisar_calculo": ("REVISAO", lambda s: (s.get("revisao") or {}).get("status", "sem revisão").replace("_", " ")),
+    "responder_origem": ("ABERTURA", lambda s: f"primeira mensagem pronta, {len(s.get('sugestoes') or [])} sugestões"),
+    "conversa": ("CONVERSA", lambda s: f"rascunho pronto ({s.get('modo_resposta', '')})"),
+    "validar_numeros": ("VALIDACAO", lambda s: "resposta segura no lugar" if s.get("modo_resposta") == "fallback_validacao"
+                        else "reescrita pedida" if s.get("correcao") else "números conferidos"),
+    "pedir_confirmacao": ("CONFIRMACAO", lambda s: f"pede confirmação: {s['escolha']['opcao']} de {texto.brl(s['escolha']['valor'])}"
+                          if s.get("escolha") else "escolha não atende às restrições"),
+    "registrar_decisao": ("DECISAO", lambda s: {"decisao_registrada": "intenção registrada, nada foi pago",
+                                               "decisao_cancelada": "cancelada pelo cliente"}.get(s.get("etapa"), "ressalva: volta para a entrada")),
+}
+
+
+def _com_log(no: Any) -> Any:
+    """Uma frase por nó executado, com nome, etapa e tempo nos campos: o passo a passo do turno."""
+    rotulo, resumo = PASSOS[no.__name__]
+
+    @functools.wraps(no)
+    def rodar(*args: Any, **kwargs: Any) -> Any:
+        inicio = time.perf_counter()
+        try:
+            saida = no(*args, **kwargs)
+        except GraphInterrupt:
+            logs.evento(log, f"[AGENTE][{rotulo}] aguardando sim/não do cliente", no=no.__name__, ms=_ms(inicio))
+            raise
+        except Exception:
+            logs.evento(log, f"[AGENTE][{rotulo}] falhou", logging.ERROR, no=no.__name__, ms=_ms(inicio))
+            raise
+        mudancas = (saida.update if isinstance(saida, Command) else saida) or {}
+        logs.evento(log, f"[AGENTE][{rotulo}] {resumo({**args[0], **mudancas})}", no=no.__name__,
+                    etapa=mudancas.get("etapa", ""), ms=_ms(inicio))
+        return saida
+
+    return rodar
+
+
+def _resumo_saida(conteudo: Any) -> str:
+    """Até 4 campos numéricos da saída da tool (ou o erro), para caber numa linha."""
+    try:
+        dados = json.loads(conteudo) if isinstance(conteudo, str) else conteudo
+    except ValueError:
+        return str(conteudo)[:120]
+    if not isinstance(dados, dict):
+        return str(dados)[:120]
+    if "erro" in dados:
+        return f"erro={dados['erro']}"
+    return ", ".join(f"{k}={v}" for k, v in dados.items() if isinstance(v, int | float) and not isinstance(v, bool))[:200] or "ok"
 
 
 @dynamic_prompt
@@ -137,7 +210,11 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             mensagem = "Valor da fatura: " + mensagem
         try:
             # Aberto por aviso ou valor ✦, a fala é o texto do botão: não há fato para extrair (nem LLM a esperar).
+            inicio = time.perf_counter()
             e = Extracao() if estado.get("origem") else extrator(mensagem)
+            campos = sorted(e.model_dump(exclude_defaults=True))
+            logs.evento(log, f"[AGENTE][EXTRACAO] {', '.join(campos) if campos else 'nada novo na mensagem'} ({_seg(_ms(inicio))})",
+                        campos=campos, ms=_ms(inicio))
         except ValidationError as erro:
             campo = str(erro.errors()[0]["loc"][0])
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente com o nome do campo?", campo_esclarecimento=campo if campo in {"valor_fatura", "saldo_atual", "reserva_desejada", "essenciais_informados", "proxima_renda", "despesas"} else None)
@@ -163,7 +240,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         try:
             c = comparar_contexto(runtime.context.carregar(), estado["dados"], despesas_confirmadas(estado))
         except Exception:
-            log.exception("calculo_falhou turno=%s", estado["turno_id"])
+            log.exception("[AGENTE][CALCULO] falhou", extra={"campos": {"turno_id": estado["turno_id"]}})
             c = {"erro": "ferramenta_indisponivel"}
         c["versao_contexto"] = estado["versao_contexto"]
         if c.get("erro"):
@@ -199,6 +276,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         if agente is None:
             return {"rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]), "modo_resposta": "simulado"}
         historico = list(estado["messages"])  # só falas: tool calls ficam dentro do subgrafo
+        inicio = time.perf_counter()
         try:
             saida = agente.invoke(
                 {
@@ -213,12 +291,19 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                 context=runtime.context,
             )
         except Exception:  # LLM fora do ar (503, cota, timeout): o cliente recebe os mesmos números em texto fixo
-            log.exception("conversa_llm_falhou usuario=%s", ctx.id_usuario)
+            log.exception("[AGENTE][GEMINI] falhou; usando a resposta fixa", extra={"campos": {"etapa": estado["etapa"], "ms": _ms(inicio)}})
             return {"rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]), "correcao": None,
                     "modo_resposta": "fallback", "eventos": _evento(estado, "conversa", "falha_llm")}
         novas = saida["messages"][len(historico):]
         tools = [m for m in novas if isinstance(m, ToolMessage)]
         final = next((m.text for m in reversed(novas) if isinstance(m, AIMessage) and m.text), "")
+        chamadas = {tc["id"]: tc for m in novas if isinstance(m, AIMessage) for tc in m.tool_calls}
+        for m in tools:
+            tc = chamadas.get(m.tool_call_id, {"name": m.name, "args": {}})
+            args = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
+            logs.evento(log, f"[AGENTE][TOOL] {tc['name']}({args}) → {_resumo_saida(m.content)}", tool=tc["name"], args=tc["args"])
+        logs.evento(log, f"[AGENTE][GEMINI] respondeu em {_seg(_ms(inicio))} com {len(tools)} tool{'s' if len(tools) != 1 else ''}"
+                    + (" (reescrita)" if estado.get("correcao") else ""), etapa=estado["etapa"], ms=_ms(inicio))
         c = estado["comparacao"]
         if c["status"] == "insuficiente":
             # O modelo responde à pergunta; o valor que falta vem sempre da regra.
@@ -244,7 +329,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             return {"messages": [AIMessage(_com_pendencias(estado["rascunho"], estado))], "numeros_sem_fonte": [],
                     "eventos": _evento(estado, "revisao_texto", "concluido")}
         reescritas = estado["reescritas"] + 1
-        log.warning("numeros_sem_fonte usuario=%s tentativa=%d %s", ctx.id_usuario, reescritas, suspeitos)
+        logs.evento(log, f"[AGENTE][VALIDACAO] números sem fonte: {', '.join(suspeitos)} (tentativa {reescritas})", logging.WARNING,
+                    tentativa=reescritas, suspeitos=suspeitos)
         if reescritas <= MAX_REESCRITAS:
             correcao = f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. Reescreva usando só os números do cálculo e das tools."
             return {"reescritas": reescritas, "correcao": correcao}
@@ -327,8 +413,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
 
     g = StateGraph(Estado, context_schema=Contexto)
     for no in (guardrail, atualizar_estado, perguntar_cliente, calcular_opcoes, revisar_calculo, responder_origem, conversa, validar_numeros, pedir_confirmacao):
-        g.add_node(no.__name__, no)
-    g.add_node("registrar_decisao", registrar_decisao, destinations=("guardrail", END))
+        g.add_node(no.__name__, _com_log(no))
+    g.add_node("registrar_decisao", _com_log(registrar_decisao), destinations=("guardrail", END))
     g.add_edge(START, "guardrail")
     g.add_conditional_edges("guardrail", bloqueado, ["atualizar_estado", END])
     g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem"])
@@ -374,7 +460,9 @@ def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | Non
     pergunta = aberturas.pergunta(origem) if origem else None
     mensagem = pergunta or mensagem
     chave = json.dumps([ctx.id_usuario, sessao], ensure_ascii=False)
-    config = {"configurable": {"thread_id": hashlib.sha256(chave.encode()).hexdigest()}, "recursion_limit": 30}
+    # Os metadados vão para o LangSmith: dá para achar o turno pela sessão, pelo cliente ou pelo trace do log.
+    metadados = {"sessao": sessao, "id_usuario": ctx.id_usuario, "trace": logs.contexto.get().get("trace")}
+    config = {"configurable": {"thread_id": hashlib.sha256(chave.encode()).hexdigest()}, "recursion_limit": 30, "metadata": metadados}
     contexto = Contexto(id_usuario=ctx.id_usuario, data_ref=ctx.data_ref, cliente=ctx)
     pendente = grafo.get_state(config).interrupts
     entrada = Command(resume=mensagem, update={"origem": origem}) if pendente else {"messages": [HumanMessage(mensagem)], "origem": origem}

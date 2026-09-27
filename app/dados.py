@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
+import time
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
+from app import logs
 from app.features import Transacao
+
+log = logging.getLogger("agente")
 
 CSV_MOCK = Path(__file__).resolve().parent.parent / "data" / "mock" / "transacoes.csv"
 
@@ -67,15 +72,23 @@ class RepositorioBigQuery:
             sql = f"SELECT {COLUNAS} FROM `{self._tabela}` WHERE id_usuario IN UNNEST(@ids) ORDER BY id_usuario, anomesdia"  # noqa: S608
             config = self._bq.QueryJobConfig(query_parameters=[self._bq.ArrayQueryParameter("ids", "STRING", faltam)])
             novos: dict[str, list[Transacao]] = {i: [] for i in faltam}
+            inicio = time.perf_counter()
             for linha in self._cliente.query(sql, job_config=config).result():
                 lista = novos[linha["id_usuario"]]
                 lista.append(Transacao.de_linha(dict(linha.items()), len(lista)))
             self._cache.update(novos)
+            linhas, ms = sum(map(len, novos.values())), round((time.perf_counter() - inicio) * 1000)
+            logs.evento(log, f"[BIGQUERY] extrato de {len(faltam)} cliente(s): {linhas} linhas em {ms} ms",
+                        clientes=len(faltam), linhas=linhas, ms=ms)
         return {i: list(self._cache[i]) for i in ids}
 
     def listar_clientes(self, limite: int = 50) -> list[str]:
         sql = f"SELECT DISTINCT id_usuario FROM `{self._tabela}` ORDER BY id_usuario LIMIT {int(limite)}"  # noqa: S608
-        return [linha["id_usuario"] for linha in self._cliente.query(sql).result()]
+        inicio = time.perf_counter()
+        ids = [linha["id_usuario"] for linha in self._cliente.query(sql).result()]
+        ms = round((time.perf_counter() - inicio) * 1000)
+        logs.evento(log, f"[BIGQUERY] lista de {len(ids)} clientes em {ms} ms", clientes=len(ids), ms=ms)
+        return ids
 
 
 @lru_cache(maxsize=1)
