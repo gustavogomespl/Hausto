@@ -40,7 +40,10 @@ export type ClienteResumo = { id_usuario: string; persona: string; gatilho: bool
 export type Origem = { tipo: 'aviso'; id: IdAviso } | { tipo: 'ancora'; campo: 'saldo' | 'fatura' | 'gasto_por_dia' | 'juros_por_dia' | 'parcelas' };
 // Gráficos que acompanham a resposta do chat (0..n por mensagem).
 export type EtapaCaixa = { rotulo: string; valor: number; tipo: 'inicio' | 'entrada' | 'saida' | 'resultado' };
-export type OpcaoVisual = { rotulo: string; pago: number; custo: number; divida_restante: number; cabe: boolean; destaque: boolean };
+export type OpcaoVisual = {
+  rotulo: string; pago: number; custo: number; juros_cartao?: number; juros_conta?: number;
+  divida_restante: number; cabe: boolean; destaque: boolean;
+};
 export type EventoTempo = { data: string /* YYYY-MM-DD */; rotulo: string; valor: number | null; tipo: 'hoje' | 'fatura' | 'despesa' | 'renda' };
 export type Visual =
   | { tipo: 'caixa_ate_renda'; titulo: string; resumo: string; dados: { etapas: EtapaCaixa[] } }

@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app import calculos
-from app.agente.texto import brl, linhas_opcoes, origem_da_fatura
+from app.agente.texto import SUGESTOES, brl, linhas_opcoes, origem_da_fatura
 from app.features import ContextoCliente
 
 PERGUNTA_ANCORA = "Por que esse valor?"
@@ -52,6 +52,11 @@ def abrir(origem: dict[str, str], ctx: ContextoCliente, sessao: dict[str, Any] |
     return _ancora(origem["campo"], ctx, sessao)
 
 
+def _conta(saldo: float) -> str:
+    """Saldo em palavras: "a conta deve ficar negativa em R$ 1.025,52" em vez de "R$ -1.025,52"."""
+    return f"a conta deve ficar negativa em {brl(-saldo)}" if saldo < 0 else f"a conta deve ter {brl(saldo)}"
+
+
 def _nota_da_sessao(card: dict[str, Any], sessao: dict[str, Any] | None) -> list[str]:
     informada = (sessao or {}).get("valor_fatura")
     if informada is None or informada == card.get("valor_fatura"):
@@ -73,12 +78,12 @@ def _aviso(aviso: str, ctx: ContextoCliente, sessao: dict[str, Any] | None) -> d
         linhas = [
             f"Pelas contas da simulação, até a próxima renda, em {renda}, faltam {brl(c['deficit_para_o_minimo'])} "
             f"para pagar o mínimo de {brl(c['opcoes']['minimo']['valor_pago'])} sem apertar o essencial.",
-            f"Isso considera {brl(c['saldo_projetado_no_vencimento'])} na conta no vencimento e "
-            f"{brl(c['essenciais_ate_renda'])} de gastos essenciais.",
+            f"No vencimento, {_conta(c['saldo_projetado_no_vencimento'])}. Os gastos essenciais até a renda somam "
+            f"{brl(c['essenciais_ate_renda'])}.",
             *_nota_da_sessao(c, sessao),
-            "Podemos rever a reserva, algum gasto essencial ou confirmar seu saldo de hoje. Por onde quer começar?",
+            "Posso te mostrar como pagar menos juros e onde dá para cortar no dia a dia. Por onde quer começar?",
         ]
-        return {"resposta": "\n".join(linhas), "sugestoes": ["Conferir meu saldo", "Rever a reserva", "Aconteceu um imprevisto"],
+        return {"resposta": "\n".join(linhas), "sugestoes": SUGESTOES["informar_deficit"],
                 "ancora": None, "visuais": [visuais.caixa_ate_renda(ctx, c, "minimo")]}
     linhas = [
         f"Sua fatura de {brl(c['valor_fatura'])} vence em {ctx.proximo_vencimento.strftime('%d/%m')}, {origem_da_fatura(c)}.",

@@ -38,4 +38,16 @@ describe('<ComparaOpcoes>', () => {
     expect(itens[1].querySelector('.opcao-trilho span')).toBeTruthy();
     expect(itens[2].querySelector('.opcao-trilho span')).toBeTruthy();
   });
+
+  it('sem folga: um aviso só no resumo, sem repetir em cada opção', () => {
+    const semFolga: OpcaoVisual[] = [
+      { rotulo: 'Pagar tudo', pago: 1150.91, custo: 143.79, juros_cartao: 0, juros_conta: 143.79, divida_restante: 2163.33, cabe: false, destaque: false },
+      { rotulo: 'Pagar o mínimo', pago: 172.64, custo: 221.84, juros_cartao: 143.08, juros_conta: 78.76, divida_restante: 2163.33, cabe: false, destaque: false },
+    ];
+    render(<ComparaOpcoes opcoes={semFolga} />);
+
+    expect(screen.queryByText('aperta os essenciais')).toBeNull();
+    expect(screen.getByText('juros do limite da conta')).toBeTruthy();
+    expect(screen.getByText('juros do cartão R$ 143,08 + juros da conta R$ 78,76')).toBeTruthy();
+  });
 });

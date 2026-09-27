@@ -30,10 +30,12 @@ def _fatura_do_turno(runtime: ToolRuntime[Contexto]) -> float | None:
 
 @tool
 def obter_contexto_cliente(runtime: ToolRuntime[Contexto]) -> dict[str, Any]:
-    """Persona, saldo atual, renda média, próximo vencimento, próxima renda, últimas faturas e decisões anteriores."""
+    """Persona, saldo atual, renda média, próximo vencimento, próxima renda, últimas faturas, decisões anteriores
+    e `onde_da_para_cortar`: os maiores gastos cortáveis do dia a dia, por categoria e por mês."""
     ctx = runtime.context.carregar()
     decisoes = runtime.store.search(("decisoes", ctx.id_usuario), limit=3) if runtime.store else []
-    return {**ctx.resumo(), "dados_confirmados": runtime.state.get("dados_confirmados") or {},
+    return {**ctx.resumo(), "onde_da_para_cortar": plano.onde_da_para_cortar(ctx),
+            "dados_confirmados": runtime.state.get("dados_confirmados") or {},
             "despesas_confirmadas": runtime.state.get("despesas_confirmadas") or [],
             "decisoes_anteriores": [d.value for d in decisoes]}
 
@@ -144,7 +146,7 @@ def simular_plano(pagamento_fatura: float, runtime: ToolRuntime[Contexto], reser
     return plano.simular(runtime.context.carregar(), c, pagamento_fatura, reserva, limite_diario)
 
 
-@tool
+@tool(return_direct=True)  # propor encerra o planejador: a explicação ao cliente fica com o orquestrador
 def propor_plano(pagamento_fatura: float, limite_diario: float, runtime: ToolRuntime[Contexto],
                  reserva: float | None = None) -> dict[str, Any]:
     """Propõe ao cliente um plano que `simular_plano` mostrou que cabe. O sistema pede o aceite dele
@@ -165,6 +167,6 @@ FERRAMENTAS = [
     simular_pagamento_com_negativo,
     comparar_opcoes,
     mostrar_visual,
-    simular_plano,
-    propor_plano,
 ]
+# Só o planejador (subagente) usa: o orquestrador pede o plano por `montar_plano`.
+FERRAMENTAS_PLANEJADOR = [simular_plano, propor_plano]

@@ -82,26 +82,40 @@ def caixa_ate_renda(ctx: ContextoCliente, c: dict[str, Any], pagamento: str | fl
     }
 
 
+def parcial_repetido(c: dict[str, Any]) -> bool:
+    """O parcial viável é o próprio integral (o caixa cobre tudo) ou o próprio mínimo (sem folga)."""
+    pago = c["opcoes"]["parcial_viavel"]["valor_pago"]
+    return pago >= c["valor_fatura"] or pago <= c["opcoes"]["minimo"]["valor_pago"]
+
+
 def comparar_opcoes(c: dict[str, Any]) -> dict[str, Any]:
-    """Custo de cada forma de pagar, o que fica devendo e se cabe no caixa (destaque sem selo)."""
+    """Custo de cada forma de pagar (juros do cartão + da conta), o que fica devendo e se cabe no caixa."""
     op = c["opcoes"]
     linhas = []
     for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"),
                          ("minimo", "Pagar o mínimo")):
-        if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
-            continue  # o caixa cobre tudo: o parcial é o próprio integral
+        if nome == "parcial_viavel" and parcial_repetido(c):
+            continue
         o = op[nome]
         linhas.append({
             "rotulo": rotulo,
             "pago": _r(c["valor_fatura"] if nome == "integral" else o["valor_pago"]),
             "custo": _r(o["custo_total"]),
-            "divida_restante": _r(o.get("valor_no_negativo", 0.0) if nome == "integral" else o["valor_rolado"]),
+            "juros_cartao": _r(o["juros_cartao"]),
+            "juros_conta": _r(o["juros_conta"]),
+            "divida_restante": _r(o["divida_total"]),
             "cabe": bool(o["atende_restricoes"]),
             "destaque": nome == c.get("recomendada"),
         })
-    cabem = [l["rotulo"].lower() for l in linhas if l["cabe"]]
-    resumo = (f"Cabem no caixa: {', '.join(cabem)}." if cabem
-              else "Nenhuma forma de pagar cabe no caixa sem apertar os essenciais.")
+    cabem = [o["rotulo"].lower() for o in linhas if o["cabe"]]
+    dividas = {o["divida_restante"] for o in linhas}
+    if cabem:
+        resumo = f"Cabem no caixa: {', '.join(cabem)}."
+    elif len(dividas) == 1 and min(dividas) > 0:  # sem folga, a dívida é a mesma: muda onde fica e quanto custa
+        resumo = (f"Nenhuma cabe sem apertar os essenciais. Você fica devendo {brl(min(dividas))} de qualquer jeito; "
+                  "muda onde a dívida fica e quanto custa.")
+    else:
+        resumo = "Nenhuma forma de pagar cabe no caixa sem apertar os essenciais."
     return {"tipo": "comparar_opcoes", "titulo": "Quanto custa cada forma de pagar", "resumo": resumo, "dados": {"opcoes": linhas}}
 
 

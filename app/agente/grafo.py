@@ -5,6 +5,7 @@ Revisão aprovada -> conversa/validar_numeros ou pedir_confirmacao/registrar_dec
 Uma ressalva na confirmação volta à entrada e invalida a proposta pendente.
 
 Só `atualizar_estado` (extração) e `conversa` (create_agent + tools) usam LLM; o resto é regra.
+A `conversa` orquestra: faz as contas pelas tools e delega o plano ao subagente `planejador`.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
 from app import calculos, logs, plano
-from app.agente import aberturas, texto
+from app.agente import aberturas, planejador, texto
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, pode_contextualizar_despesa, referencia
 from app.agente.contexto_financeiro import comparar_contexto
 from app.agente.contratos import ResultadoEspecialista, referencia_resultado
@@ -69,7 +70,7 @@ MAX_REESCRITAS = 1  # depois disso, a resposta segura (só números das tools) s
 ESPECIALISTAS = {
     "contexto_relacionamento": ("guardrail", "contexto", "abertura", "conversa", "seguranca_sessao", "mostrar_visual"),
     "conta_liquidez": ("projetar_saldo_ate_vencimento",),
-    "compromissos_alternativas": ("calcular_opcoes", "comparar_contexto", "prever_fatura", "projetar_essenciais_ate_renda", "simular_custo_rolagem", "simular_pagamento_com_negativo", "comparar_opcoes", "simular_plano", "propor_plano"),
+    "compromissos_alternativas": ("calcular_opcoes", "comparar_contexto", "prever_fatura", "projetar_essenciais_ate_renda", "simular_custo_rolagem", "simular_pagamento_com_negativo", "comparar_opcoes", "montar_plano"),
     "revisao_evidencias": ("revisao", "revisao_texto", "revisao_escolha", "confirmacao", "revisar_calculo", "validar_numeros", "pedir_confirmacao", "registrar_decisao"),
 }
 _SESSOES: WeakKeyDictionary = WeakKeyDictionary()
@@ -127,8 +128,9 @@ def _referencia_proposta(escolha: dict[str, Any], texto_apresentado: str) -> str
 ETAPAS = {
     "explicar_opcoes": "explique a simulação, distinguindo capacidade de caixa e comparação com taxas ilustrativas. Não apresente isso como recomendação contratual.",
     "informar_deficit": "nenhuma opção cabe no caixa sem apertar os essenciais. Responda primeiro à pergunta do cliente, "
-                        "sem culpa e em até 3 linhas. Nunca diga que sobra dinheiro, que uma opção cabe ou que ele deve pagar algo; "
-                        "o sistema acrescenta a frase com o valor que falta.",
+                        "sem culpa. Se ele quiser pagar menos juros ou saber onde cortar, siga 'Quando falta dinheiro' "
+                        "(até 6 linhas); se não, até 3 linhas. Nunca diga que sobra dinheiro, que uma opção cabe ou que "
+                        "ele deve pagar algo; o sistema acrescenta a frase com o valor que falta.",
 }
 
 
@@ -280,6 +282,8 @@ def _resumo_saida(conteudo: Any) -> str:
         return "saida_invalida"
     if "erro" in dados:
         return "erro_tool"
+    if "proposta" in dados:  # montar_plano: o detalhe vem nas linhas [AGENTE][PLANEJADOR]
+        return "plano proposto" if dados["proposta"] else "sem plano que caiba"
     valores = _numeros_log(dados, ("custo_total", "valor_pago", "valor_estimado", "saldo_projetado_no_vencimento",
                                   "essenciais_ate_renda", "valor_fatura", "disponivel_para_fatura", "juros", "iof"))
     return ", ".join(f"{k}={v}" for k, v in list(valores.items())[:4]) or "ok"
@@ -316,11 +320,13 @@ def _texto_do_cliente(estado: Estado) -> str:
 
 def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras, checkpointer: Any = None, store: Any = None):
     """`modelo=None` é o modo simulado: a conversa usa o texto fixo com os números das tools."""
-    nomes_ferramentas = {ferramenta.name for ferramenta in FERRAMENTAS}
+    # O orquestrador faz as contas pelas tools e delega o plano ao planejador (subagente).
+    ferramentas = [*FERRAMENTAS, planejador.ferramenta(planejador.criar(modelo, store))] if modelo is not None else FERRAMENTAS
+    nomes_ferramentas = {ferramenta.name for ferramenta in ferramentas}
     agente = (
         create_agent(
             model=modelo,
-            tools=FERRAMENTAS,
+            tools=ferramentas,
             middleware=[instrucao_do_turno],
             state_schema=EstadoConversa,
             context_schema=Contexto,
@@ -520,9 +526,12 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             resultados_tools.append(resultado_tool)
             eventos = _evento({**estado, "eventos": eventos}, nome_tool, "erro" if falhou else "concluido",
                               tool=nome_tool, evidencias=resultado_tool["evidencias"])
-        propostas = [_saida_tool(m) for m in tools if m.name == "propor_plano"]
-        proposta = next((p for p in reversed(propostas) if p.get("proposto") and p.get("cabe")), None)
+        propostas = [_saida_tool(m).get("proposta") for m in tools if m.name == "montar_plano"]
+        proposta = next((p for p in reversed(propostas) if p), None)
         visuais_turno = [_saida_tool(m) for m in tools if m.name == "mostrar_visual" and "tipo" in _saida_tool(m)]
+        if estado.get("correcao"):  # reescrita: o plano e os visuais já montados neste turno continuam valendo
+            proposta = proposta or estado.get("plano_proposto")
+            visuais_turno = visuais_turno or list(estado.get("visuais") or [])
         if proposta and not any(v["tipo"] == "caixa_ate_renda" for v in visuais_turno):
             # Toda proposta mostra o caixa fechando com o plano, sem depender do modelo lembrar.
             visuais_turno.append(plano.caixa_do_plano(ctx, estado["comparacao"], proposta))

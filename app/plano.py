@@ -6,15 +6,20 @@ O LLM propõe os números; `simular` confere contra o caixa. Só vale depois que
 
 from __future__ import annotations
 
+import math
+from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any
 
 from app.agente.texto import brl
-from app.calculos import CATEGORIAS_ESSENCIAIS
+from app.calculos import CATEGORIAS_CARTAO, CATEGORIAS_ESSENCIAIS
 from app.features import MICRO_FATURA, ContextoCliente, Transacao
 
 # Fora do "dia a dia": essenciais, fatura e movimentações financeiras (não são consumo).
 FORA_DO_DIA_A_DIA = CATEGORIAS_ESSENCIAIS | {"Produtos financeiros", "Transferencias diversas", "Saque"}
+# Onde dá para cortar: consumo que não é essencial (delivery, lazer, lojas...). Veículo ou saúde
+# também ficam fora do essencial, mas não são corte do dia a dia.
+CORTAVEIS = CATEGORIAS_CARTAO - CATEGORIAS_ESSENCIAIS
 JANELA_NORMAL_DIAS = 90  # o "normal" do cliente: média diária dos últimos 90 dias
 TOLERANCIA = 1.10  # avisa acima de 10% do previsto, para um gasto pontual não virar alarme
 
@@ -27,6 +32,17 @@ def normal_diario(ctx: ContextoCliente) -> float:
     inicio = ctx.data_ref - timedelta(days=JANELA_NORMAL_DIAS)
     total = sum(t.vlr for t in ctx.transacoes if inicio < t.data <= ctx.data_ref and do_dia_a_dia(t))
     return round(total / JANELA_NORMAL_DIAS, 2)
+
+
+def onde_da_para_cortar(ctx: ContextoCliente, quantas: int = 4) -> list[dict[str, Any]]:
+    """Os maiores gastos cortáveis do dia a dia, em média por mês nos últimos 90 dias."""
+    inicio = ctx.data_ref - timedelta(days=JANELA_NORMAL_DIAS)
+    soma: dict[str, float] = defaultdict(float)
+    for t in ctx.transacoes:
+        if inicio < t.data <= ctx.data_ref and do_dia_a_dia(t) and t.macro in CORTAVEIS:
+            soma[t.macro] += t.vlr
+    meses = JANELA_NORMAL_DIAS / 30
+    return [{"categoria": k, "por_mes": round(v / meses, 2)} for k, v in sorted(soma.items(), key=lambda kv: -kv[1])[:quantas]]
 
 
 def simular(ctx: ContextoCliente, c: dict[str, Any], pagamento_fatura: float, reserva: float | None = None,
@@ -59,7 +75,10 @@ def simular(ctx: ContextoCliente, c: dict[str, Any], pagamento_fatura: float, re
     if limite > maximo:
         return {**base, "cabe": False,
                 "motivo": f"Com {brl(limite)} por dia, faltam {brl((limite - maximo) * dias)} até {renda.strftime('%d/%m')}."}
-    return {**base, "cabe": True}
+    # O que o limite escolhido deixa de gastar até a renda, somado à reserva: a regra faz a conta, não o LLM.
+    # Arredonda para baixo: guardando tudo, o mesmo limite continua cabendo.
+    sobra = math.floor((normal + folga / dias - limite) * dias * 100) / 100
+    return {**base, "cabe": True, **({"reserva_com_sobra": round(reserva + sobra, 2)} if limite < maximo else {})}
 
 
 def caixa_do_plano(ctx: ContextoCliente, c: dict[str, Any], s: dict[str, Any]) -> dict[str, Any]:

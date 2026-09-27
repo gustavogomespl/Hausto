@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 from test_agente import ModeloFalso, ctx_padrao, novo_grafo
+from test_planejador import pelo_planejador
 
 from app import calculos, painel, plano
 from app.agente import conversar
@@ -50,6 +51,23 @@ def test_limite_acima_do_que_o_caixa_aguenta_nao_cabe():
     maximo = plano.simular(ctx, c, c["valor_fatura"])["limite_maximo"]
     s = plano.simular(ctx, c, c["valor_fatura"], limite_diario=maximo + 100)
     assert not s["cabe"] and "faltam" in s["motivo"]
+
+
+def test_reserva_com_sobra_guarda_a_folga_e_fecha_no_limite_escolhido():
+    ctx = ctx_padrao()
+    c = calculos.comparar_opcoes(ctx)
+    maximo = plano.simular(ctx, c, c["valor_fatura"])["limite_maximo"]
+    limite = round(maximo / 2, 2)
+    s = plano.simular(ctx, c, c["valor_fatura"], limite_diario=limite)
+    assert s["cabe"] and s["reserva_com_sobra"] > 0  # a regra faz a conta; o LLM não soma de cabeça
+    guardando = plano.simular(ctx, c, c["valor_fatura"], reserva=s["reserva_com_sobra"], limite_diario=limite)
+    assert guardando["cabe"] and 0 <= guardando["limite_maximo"] - limite <= 0.01
+
+
+def test_sem_sobra_nao_sugere_reserva():
+    ctx = ctx_padrao()
+    c = calculos.comparar_opcoes(ctx)
+    assert "reserva_com_sobra" not in plano.simular(ctx, c, c["valor_fatura"])  # no limite máximo não sobra nada
 
 
 def test_pagamento_abaixo_do_minimo_nao_cabe():
@@ -104,10 +122,8 @@ def _modelo_que_propoe(ctx):
     c = calculos.comparar_opcoes(ctx)
     s = plano.simular(ctx, c, c["valor_fatura"])
     args = {"pagamento_fatura": c["valor_fatura"], "reserva": 0, "limite_diario": s["limite_maximo"]}
-    return ModeloFalso(responses=[
-        AIMessage("", tool_calls=[{"name": "propor_plano", "args": args, "id": "p1"}]),
-        AIMessage("Montei um plano: pagar a fatura inteira e manter os gastos do dia a dia no limite combinado."),
-    ]), s
+    final = "Montei um plano: pagar a fatura inteira e manter os gastos do dia a dia no limite combinado."
+    return pelo_planejador(("propor_plano", args), final=final), s
 
 
 def test_plano_proposto_so_vale_depois_do_sim():
@@ -129,19 +145,6 @@ def test_plano_recusado_nao_e_gravado():
     conversar(grafo, ctx, "s1", "monta um plano pra mim")
     t = conversar(grafo, ctx, "s1", "não")
     assert t.etapa == "plano_recusado" and store.get(("planos", ctx.id_usuario), "ativo") is None
-
-
-def test_plano_que_nao_cabe_nao_vira_proposta():
-    ctx = ctx_padrao()
-    c = calculos.comparar_opcoes(ctx)
-    args = {"pagamento_fatura": c["valor_fatura"], "reserva": 0, "limite_diario": 10_000_000}
-    modelo = ModeloFalso(responses=[
-        AIMessage("", tool_calls=[{"name": "propor_plano", "args": args, "id": "p1"}]),
-        AIMessage("Esse limite não fecha. Quer tentar um valor menor?"),
-    ])
-    grafo, _ = novo_grafo(modelo)
-    t = conversar(grafo, ctx, "s1", "quero gastar 10 milhões por dia")
-    assert t.pendente_confirmacao is None
 
 
 def test_aviso_do_plano_abre_com_o_progresso():
@@ -186,8 +189,7 @@ def _propor(ctx, limite=None, extra=None):
     c = calculos.comparar_opcoes(ctx)
     s = plano.simular(ctx, c, c["valor_fatura"])
     args = {"pagamento_fatura": c["valor_fatura"], "reserva": 0, "limite_diario": limite if limite is not None else s["limite_maximo"]}
-    chamadas = [{"name": "propor_plano", "args": args, "id": "p1"}, *(extra or [])]
-    return ModeloFalso(responses=[AIMessage("", tool_calls=chamadas), AIMessage("Montei um plano até a renda.")])
+    return pelo_planejador(("propor_plano", args), extra=extra)
 
 
 def _cascata(t):

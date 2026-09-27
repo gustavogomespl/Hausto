@@ -44,8 +44,8 @@ def linhas_opcoes(c: dict[str, Any]) -> list[str]:
     op = c["opcoes"]
     linhas = []
     for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"), ("minimo", "Pagar o mínimo")):
-        if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
-            continue  # o caixa cobre tudo: o parcial é o próprio integral
+        if nome == "parcial_viavel" and op[nome]["valor_pago"] in (c["valor_fatura"], op["minimo"]["valor_pago"]):
+            continue  # o parcial é o próprio integral (o caixa cobre tudo) ou o próprio mínimo (sem folga)
         ok = "cabe no seu caixa" if op[nome]["atende_restricoes"] else "aperta os essenciais"
         linhas.append(f"- {rotulo}: custo de {brl(op[nome]['custo_total'])} ({ok}).")
     return linhas
@@ -53,7 +53,7 @@ def linhas_opcoes(c: dict[str, Any]) -> list[str]:
 
 SUGESTOES = {
     "explicar_opcoes": ["Quero pagar tudo", "E se eu pagar o mínimo?", "Aconteceu um imprevisto"],
-    "informar_deficit": ["Conferir meu saldo", "Rever a reserva", "Aconteceu um imprevisto"],
+    "informar_deficit": ["Como pagar menos juros?", "Onde dá para cortar?", "Conferir meu saldo", "Aconteceu um imprevisto"],
     "escolha_incompativel": ["Conferir meu saldo", "Rever a reserva"],
     "decisao_registrada": ["Minha fatura"],
     "decisao_cancelada": ["Minha fatura", "Aconteceu um imprevisto"],
