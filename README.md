@@ -3,7 +3,8 @@
 Protótipo de gestão financeira para pessoa física: compreender a intenção do
 cliente, comparar o pagamento da fatura com o caixa e os compromissos até a
 próxima renda e explicar as consequências. Implementado em **Python 3.12,
-FastAPI, LangGraph/LangChain**, com integrações previstas para Gemini e BigQuery.
+FastAPI, LangGraph/LangChain**, com integrações existentes com Gemini/Vertex AI
+e BigQuery.
 
 Esta entrega organiza atualização de contexto, encaminhamento, revisão e
 registros de execução em **quatro especialistas lógicos no mesmo StateGraph**.
@@ -50,6 +51,10 @@ $env:FONTE_DADOS = "mock"
 uv run --no-sync pytest -q
 ```
 
+Resultado da suíte completa após o rebase sobre a nova `origin/main`:
+**273 testes aprovados, 0 falhas e 0 skips**, em `mock/simulado`, com tracing
+desativado.
+
 A suíte usa dados locais e modelos falsos. Cobre cálculos, atualização do
 contexto, pendências, confirmação, revisão, isolamento de sessões e rotas da
 API; não valida chamadas reais ao Gemini ou ao BigQuery. Para regenerar
@@ -63,12 +68,12 @@ O cenário Bruno, com capacidade de R$ 3.400 caindo para R$ 2.900 após uma desp
 de R$ 500, é um caso sintético em `tests/test_contexto_financeiro.py`. Ele não
 corresponde a um dos três clientes do CSV.
 
-### Known baseline failures
+### Baseline histórica
 
 Na baseline de `7ae270b79a27948c4c05bd53beff7a1da4906899`, antes desta
 implementação, foram coletados 141 testes: **139 passaram e 2 falharam em
-25,54 s**. Ambos falham porque a geração de evals exige a persona `P1` com
-status `ok`, ausente no fixture/mock atual:
+25,54 s**. Ambos falharam porque a geração de evals exigia a persona `P1` com
+status `ok`, ausente no fixture/mock usado naquela execução:
 
 - `tests/test_evals.py::test_criar_testes_gera_30_casos_com_asserts`
 - `tests/test_evals.py::test_sem_juiz_so_ficam_as_checagens`
@@ -80,10 +85,12 @@ A repetição excluindo somente esses dois node IDs confirmou **139 passed,
 .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --tb=short --deselect=tests/test_evals.py::test_criar_testes_gera_30_casos_com_asserts --deselect=tests/test_evals.py::test_sem_juiz_so_ficam_as_checagens
 ```
 
-Esses resultados foram obtidos em `mock/simulado`, com tracing desativado.
-Os dois testes continuam na suíte, sem `xfail` ou exclusão permanente; os
-evals, fixtures e dados mock não foram corrigidos para ocultar essas falhas.
-Qualquer falha diferente após a implementação é regressão, não baseline.
+Esses resultados históricos foram obtidos em `mock/simulado`, com tracing
+desativado. Após o rebase, os dois testes passam com os ajustes que já vieram
+da nova `origin/main` em `tests/test_evals.py`. Continuam na suíte, sem
+`xfail`, `skip` ou exclusão. Nenhum eval, fixture ou dado mock foi alterado
+durante a resolução dos conflitos. Qualquer nova falha deve ser investigada
+como regressão, sem ser atribuída automaticamente à baseline histórica.
 
 ## Conferir a jornada
 
@@ -191,10 +198,11 @@ ou `MODO_LLM=gemini` com `GOOGLE_API_KEY`. Para dados, `FONTE_DADOS=bigquery` us
 o arquivo aponta para serviços externos, portanto não é necessário copiá-lo
 para a demonstração local acima.
 
-Antes da integração real, a equipe precisa conferir modelo disponível, região,
+Para executar as integrações existentes, confira modelo disponível, região,
 projeto, permissões, credenciais e eventuais custos. Não coloque chaves ou
-arquivos de credenciais no Git. **Gemini/Vertex e BigQuery reais não foram
-validados nesta entrega.**
+arquivos de credenciais no Git. **Esta branch não revalidou isoladamente os
+serviços externos Gemini/Vertex AI e BigQuery.** A validação descrita aqui foi
+local, em `mock/simulado`; as integrações já fazem parte do projeto.
 
 ## Limites atuais
 
