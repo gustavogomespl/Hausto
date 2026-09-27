@@ -235,11 +235,16 @@ def test_outra_identidade_nao_reutiliza_sessao_nem_apaga_estado(bruno, fluxo, ca
     g, _ = fluxo
     conversar(g, bruno, "s1", INICIO)
     antes = deepcopy(estado(g, bruno))
-    with caplog.at_level(logging.INFO, logger="agente"), pytest.raises(ConflitoSessao):
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="agente"), pytest.raises(ConflitoSessao):
         conversar(g, replace(bruno, id_usuario="outro"), "s1", "sim", request_id="intruso")
     assert estado(g, bruno) == antes
-    eventos = [json.loads(r.message.split("evento_hausto ", 1)[1]) for r in caplog.records if "evento_hausto " in r.message]
-    assert any(e["status"] == "identidade_divergente" and e["request_id"] == "intruso" for e in eventos)
+    registros = [r for r in caplog.records if r.getMessage() == "evento_hausto"]
+    assert len(registros) == 1 and registros[0].levelno == logging.DEBUG
+    evento = registros[0].campos
+    assert evento["status"] == "identidade_divergente" and evento["request_id"] == "intruso"
+    assert evento["sessao_id"] == "s1" and evento["turno_id"]
+    assert evento["no"] == "seguranca_sessao" and evento["especialista"] == "contexto_relacionamento"
 
 
 def test_api_rejeita_troca_de_identidade(monkeypatch, bruno, fluxo):
@@ -253,11 +258,27 @@ def test_api_rejeita_troca_de_identidade(monkeypatch, bruno, fluxo):
 
 
 def test_evento_nao_registra_texto_livre_ou_extrato(bruno, fluxo, caplog):
-    with caplog.at_level(logging.INFO, logger="agente"):
-        conversar(fluxo[0], bruno, "s1", INICIO + " Mensagem privada marcadora.")
-    eventos = [r.message for r in caplog.records if r.message.startswith("evento_hausto ")]
-    assert eventos
-    assert all("Mensagem privada marcadora" not in e and '"saldo_atual"' not in e for e in eventos)
+    with caplog.at_level(logging.DEBUG, logger="agente"):
+        turno = conversar(fluxo[0], bruno, "s1", INICIO + " Mensagem privada marcadora.", request_id="privacidade")
+    registros = [r for r in caplog.records if r.getMessage() == "evento_hausto"]
+    assert registros and all(r.levelno == logging.DEBUG and r.exc_info is None for r in registros)
+    eventos = [r.campos for r in registros]
+    assert eventos == turno.eventos
+    obrigatorios = {"request_id", "sessao_id", "thread_id", "turno_id", "versao_contexto", "referencia_dados",
+                    "no", "especialista", "status", "stale", "pendencias", "revisao", "quando"}
+    permitidos = obrigatorios | {"tool", "evidencias"}
+    assert all(obrigatorios <= e.keys() <= permitidos for e in eventos)
+    assert all(e["request_id"] == "privacidade" and e["sessao_id"] == "s1"
+               and e["thread_id"] == config(bruno)["configurable"]["thread_id"]
+               and e["turno_id"] == turno.turno_id and e["referencia_dados"]
+               and isinstance(e["versao_contexto"], int) and e["no"]
+               and e["especialista"] in modulo.ESPECIALISTAS and e["status"] for e in eventos)
+    serializado = json.dumps(eventos, ensure_ascii=False)
+    assert "Mensagem privada marcadora" not in serializado
+    assert all(f'"{campo}"' not in serializado for campo in (
+        "mensagem", "resposta", "messages", "saldo_atual", "transacoes", "extrato", "prompt",
+        "chain_of_thought", "credenciais", "api_key", "GOOGLE_API_KEY", "token", "password", "private_key",
+    ))
 
 
 def test_turnos_concorrentes_da_mesma_sessao_sao_serializados(bruno):

@@ -157,7 +157,7 @@ def extrator_llm(modelo: Any) -> Extrator:
         try:
             return estruturado.invoke([SystemMessage(_INSTRUCAO), HumanMessage(texto)])
         except Exception:  # extração é best-effort: sem ela o turno segue com as regras
-            log.exception("extracao_llm_falhou")
+            log.exception("[AGENTE][EXTRACAO] Gemini falhou; usando as regras")
             return extrair_por_regras(texto)
 
     return extrair

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date
@@ -17,21 +18,21 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 from pydantic import BaseModel, Field, model_validator
 
-from app import calculos, painel, personas
+from app import calculos, logs, painel, personas
 from app.agente import construir_grafo, conversar
 from app.agente.grafo import ConflitoSessao
 from app.agente.modelos import extrator, modelo_chat, modo_llm
 from app.dados import repositorio
 from app.features import ContextoCliente, montar_contexto
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logs.configurar()
 log = logging.getLogger("agente")
 
 RAIZ = Path(__file__).resolve().parent
@@ -79,6 +80,28 @@ async def _aquecer(_: FastAPI):
 
 
 app = FastAPI(title="Agente de Fatura", version="0.1.0", lifespan=_aquecer)
+
+
+@app.middleware("http")
+async def registrar_request(request: Request, call_next):
+    """Uma linha por request; o trace do Cloud Run (ou um novo) acompanha todas as linhas dela."""
+    trace = request.headers.get("x-cloud-trace-context", "").split("/")[0] or uuid.uuid4().hex
+    token = logs.contexto.set({"trace": trace})
+    inicio = time.perf_counter()
+    status = 500
+    try:
+        resposta = await call_next(request)
+        status = resposta.status_code
+        return resposta
+    finally:
+        ms = round((time.perf_counter() - inicio) * 1000)
+        rota = getattr(request.scope.get("route"), "path", "rota_nao_encontrada")
+        try:
+            logs.evento(log, f"[API] {request.method} {rota} {status} em {ms} ms", metodo=request.method,
+                        rota=rota, status=status, trace=trace, ms=ms,
+                        **getattr(request.state, "log_campos", {}))
+        finally:
+            logs.contexto.reset(token)
 
 
 class Origem(BaseModel):
@@ -217,38 +240,49 @@ def decisoes(id_usuario: str) -> list[dict[str, Any]]:
 
 
 @app.post("/v1/chat", response_model=RespostaChat)
-def chat(pedido: PedidoChat) -> RespostaChat:
+def chat(pedido: PedidoChat, request: Request = None) -> RespostaChat:
     request_id = pedido.request_id or uuid.uuid4().hex
     sessao = pedido.sessao_id or uuid.uuid4().hex
-    ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
-    origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
+    correlacao = {"request_id": request_id, "sessao": sessao, "id_usuario": pedido.id_usuario}
+    # O endpoint síncrono roda em outro contexto; state leva só metadados ao middleware.
+    if request is not None:
+        request.state.log_campos = correlacao
+    token = logs.contexto.set({**logs.contexto.get(), **correlacao})
+    inicio = time.perf_counter()
     try:
-        turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem, request_id=request_id)
-    except ConflitoSessao as erro:
-        raise HTTPException(409, str(erro)) from erro
-    log.info(
-        "turno request_id=%s usuario=%s sessao=%s etapa=%s tools=%s reescritas=%d",
-        request_id, ctx.id_usuario, sessao, turno.etapa, turno.tools, turno.reescritas,
-    )
-    return RespostaChat(
-        sessao_id=sessao,
-        resposta=turno.resposta,
-        modo=modo_llm(),
-        etapa=turno.etapa,
-        pendente_confirmacao=turno.pendente_confirmacao,
-        tools_chamadas=turno.tools,
-        numeros_sem_fonte=turno.numeros_sem_fonte,
-        versao_contexto=turno.versao_contexto,
-        turno_id=turno.turno_id,
-        eventos=turno.eventos,
-        revisao=turno.revisao,
-        modo_resposta=turno.modo_resposta,
-        pendencias=turno.pendencias,
-        sugestoes=turno.sugestoes,
-        ancora=turno.ancora,
-        pergunta=turno.pergunta,
-        request_id=turno.request_id,
-        resultados_especialistas=turno.resultados_especialistas,
-        pendencias_impeditivas=turno.pendencias_impeditivas,
-        pendencias_informativas=turno.pendencias_informativas,
-    )
+        ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
+        origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
+        try:
+            turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem, request_id=request_id)
+        except ConflitoSessao as erro:
+            raise HTTPException(409, str(erro)) from erro
+        ms = round((time.perf_counter() - inicio) * 1000)
+        # Só a fala pública entra com opt-in; contexto, prompts e tools ficam fora.
+        conteudo = {"mensagem": pedido.mensagem, "resposta": turno.resposta} if os.getenv("LOG_CONTEUDO") == "1" else {}
+        logs.evento(log, f"[API][TURNO] {turno.etapa} · resposta {turno.modo_resposta} · {ms} ms", etapa=turno.etapa,
+                    modo_resposta=turno.modo_resposta, origem=origem, tools=turno.tools, reescritas=turno.reescritas,
+                    versao_contexto=turno.versao_contexto, turno_id=turno.turno_id, ms=ms, **correlacao, **conteudo)
+        return RespostaChat(
+            sessao_id=sessao,
+            resposta=turno.resposta,
+            modo=modo_llm(),
+            etapa=turno.etapa,
+            pendente_confirmacao=turno.pendente_confirmacao,
+            tools_chamadas=turno.tools,
+            numeros_sem_fonte=turno.numeros_sem_fonte,
+            versao_contexto=turno.versao_contexto,
+            turno_id=turno.turno_id,
+            eventos=turno.eventos,
+            revisao=turno.revisao,
+            modo_resposta=turno.modo_resposta,
+            pendencias=turno.pendencias,
+            sugestoes=turno.sugestoes,
+            ancora=turno.ancora,
+            pergunta=turno.pergunta,
+            request_id=turno.request_id,
+            resultados_especialistas=turno.resultados_especialistas,
+            pendencias_impeditivas=turno.pendencias_impeditivas,
+            pendencias_informativas=turno.pendencias_informativas,
+        )
+    finally:
+        logs.contexto.reset(token)
