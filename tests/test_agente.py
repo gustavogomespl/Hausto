@@ -159,7 +159,7 @@ def test_reescrita_corrige_o_numero():
     modelo = ModeloFalso(responses=[AIMessage("Sua fatura é R$ 9.999,99."), AIMessage(f"Sua fatura é {fatura}.")])
     grafo, _ = novo_grafo(modelo)
     t = conversar(grafo, ctx, "s1", "oi")
-    assert t.resposta == f"Sua fatura é {fatura}." and t.reescritas == 1
+    assert t.resposta == f"Sua fatura é {fatura}.\nFicou claro?" and t.reescritas == 1  # 1ª explicação: checa a compreensão
 
 
 class ModeloForaDoAr(ModeloFalso):

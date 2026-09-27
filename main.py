@@ -196,6 +196,24 @@ def _plano_ativo(id_usuario: str) -> dict[str, Any] | None:
     return item.value if item else None
 
 
+@app.get("/v1/indicadores/compreensao")
+def indicador_compreensao() -> dict[str, Any]:
+    """Quantos disseram que entenderam, na primeira explicação e depois de reexplicar.
+
+    Métrica 3 da ficha (compreensão antes e depois da orientação) e Resolução Conjunta nº 8, art. 4º, II
+    (efetividade da educação financeira medida por indicador). Agregado, sem dado de cliente.
+    """
+    respostas = [item.value for item in STORE.search(("compreensao",), limit=100_000)]
+
+    def taxa(grupo: list[dict[str, Any]]) -> dict[str, Any]:
+        entenderam = sum(bool(r.get("entendeu")) for r in grupo)
+        return {"respostas": len(grupo), "entenderam": entenderam, "taxa": round(entenderam / len(grupo), 3) if grupo else None}
+
+    return {"respostas": len(respostas),
+            "primeira_vez": taxa([r for r in respostas if r.get("tentativa") == 1]),
+            "depois_de_reexplicar": taxa([r for r in respostas if r.get("tentativa") == 2])}
+
+
 @app.get("/v1/clientes/{id_usuario}/plano")
 def plano_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str, Any] | None:
     """Plano aceito pelo cliente, com o progresso até a data da simulação (ou null)."""

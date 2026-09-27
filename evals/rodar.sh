@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Roda as 40 evals no promptfoo. Argumentos extras vão direto para o `promptfoo eval`.
+# Roda as 48 evals no promptfoo. Argumentos extras vão direto para o `promptfoo eval`.
 #   evals/rodar.sh                          Vertex + BigQuery (precisa do gcloud auth application-default login)
 #   EVALS_JUIZ=0 MODO_LLM=simulado FONTE_DADOS=mock evals/rodar.sh   só checagens, sem custo
 #   evals/rodar.sh --filter-pattern "d0"    só os roteiros de dado novo

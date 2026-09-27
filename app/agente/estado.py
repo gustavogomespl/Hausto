@@ -73,6 +73,11 @@ class Estado(MessagesState):
     visuais: list[dict[str, Any]]  # gráficos do turno, montados pelo código (app.visuais)
     plano_proposto: dict[str, Any] | None  # plano que cabe e espera o aceite do cliente
     risco: str | None  # classificação da fala do cliente pelos guardrails de entrada
+    # checagem de compreensão: quantas vezes já perguntou "ficou claro?" e se espera a resposta
+    compreensao_tentativas: int
+    aguardando_compreensao: bool
+    reexplicar: bool  # turno: o cliente pediu para explicar de novo
+    perguntar_compreensao: bool  # turno: a resposta termina perguntando se ficou claro
     ancora: dict[str, Any] | None
 
 
@@ -86,3 +91,5 @@ class EstadoConversa(AgentState):
     dados_confirmados: NotRequired[dict[str, Any]]
     despesas_confirmadas: NotRequired[list[dict[str, Any]]]
     acolher: NotRequired[bool]
+    reexplicar: NotRequired[bool]
+    perguntar_compreensao: NotRequired[bool]
