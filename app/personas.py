@@ -18,13 +18,17 @@ from app.painel import renda_do
 AMOSTRA = 200  # clientes avaliados para achar cada persona
 
 # `renda` aqui é a da história; a API devolve a renda real do cliente escolhido.
+# `meta` também é da história: a base não tem metas de poupança, então cada persona traz a sua.
 PERSONAS: list[dict[str, Any]] = [
     {"id": "maria", "nome": "Dona Maria Aparecida", "iniciais": "MA", "idade": 67, "cidade": "Guarulhos (SP)",
-     "frase": "Eu pago o que dá. Todo mês parece que a fatura é a mesma.", "renda": "INSS", "cor": "#8E4FBF"},
+     "frase": "Eu pago o que dá. Todo mês parece que a fatura é a mesma.", "renda": "INSS", "cor": "#8E4FBF",
+     "meta": {"rotulo": "Reserva", "nome": "reserva para imprevistos", "icone": "reserva", "alvo": 1000.0, "guardado": 350.0}},
     {"id": "carla", "nome": "Carla Menezes", "iniciais": "CM", "idade": 34, "cidade": "Recife (PE)",
-     "frase": "Quando o salário cai eu acho que dá pra tudo. No dia 15 já tô no vermelho.", "renda": "CLT", "cor": "#1F8A6E"},
+     "frase": "Quando o salário cai eu acho que dá pra tudo. No dia 15 já tô no vermelho.", "renda": "CLT", "cor": "#1F8A6E",
+     "meta": {"rotulo": "Casa", "nome": "entrada da casa própria", "icone": "casa", "alvo": 10000.0, "guardado": 3200.0}},
     {"id": "jonas", "nome": "Jonas Ferreira", "iniciais": "JF", "idade": 31, "cidade": "Belo Horizonte (MG)",
-     "frase": "Tem mês que entra bem, tem mês que não entra nada. O cartão segura as pontas.", "renda": "MEI", "cor": "#2F6FD6"},
+     "frase": "Tem mês que entra bem, tem mês que não entra nada. O cartão segura as pontas.", "renda": "MEI", "cor": "#2F6FD6",
+     "meta": {"rotulo": "Carro", "nome": "entrada do carro novo", "icone": "carro", "alvo": 8000.0, "guardado": 2000.0}},
 ]
 
 
@@ -64,3 +68,11 @@ def resolver(repo: Repositorio) -> list[dict[str, Any]]:
     with _TRAVA:
         escolhidos = _resolver(repo)
     return [{**p, "id_usuario": uid, "renda": renda} for p, (uid, renda) in zip(PERSONAS, escolhidos)]
+
+
+def meta_do_cliente(repo: Repositorio, id_usuario: str) -> dict[str, Any] | None:
+    """Meta de poupança da persona ligada ao cliente, com quanto falta e o % já guardado (ou None)."""
+    for p in resolver(repo):
+        if p["id_usuario"] == id_usuario and (m := p.get("meta")):
+            return {**m, "falta": round(m["alvo"] - m["guardado"], 2), "pct": round(m["guardado"] / m["alvo"] * 100)}
+    return None

@@ -7,6 +7,7 @@ informou outro valor na sessão, ele aparece como observação. O modelo entra n
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,13 +17,15 @@ from app.features import ContextoCliente
 
 PERGUNTA_ANCORA = "Por que esse valor?"
 PERGUNTAS_AVISO = {"fatura_vence": "Ver meu plano", "sem_folga": "Ver o que dá pra fazer", "imprevisto": "Simular meu imprevisto",
-                   "plano": "Ver o que fazer"}
+                   "plano": "Ver o que fazer", "compra": "Posso comprar?"}
 ROTULOS = {"saldo": "Saldo", "fatura": "Fatura aberta", "gasto_por_dia": "Gasto no cartão por dia",
-           "juros_por_dia": "Juros por dia", "parcelas": "Parcelas deste mês"}
+           "juros_por_dia": "Juros por dia", "parcelas": "Parcelas deste mês", "meta": "Já guardado para a meta"}
 
 # Chips que abrem o mesmo fluxo de um aviso ou de um valor ✦.
 ATALHOS = {
     "aconteceu um imprevisto": {"tipo": "aviso", "id": "imprevisto"},
+    "posso comprar": {"tipo": "aviso", "id": "compra"},
+    "minha meta": {"tipo": "ancora", "campo": "meta"},
     "minha fatura": {"tipo": "ancora", "campo": "fatura"},
     "meu saldo": {"tipo": "ancora", "campo": "saldo"},
     "conferir meu saldo": {"tipo": "ancora", "campo": "saldo"},
@@ -70,6 +73,13 @@ def _aviso(aviso: str, ctx: ContextoCliente, sessao: dict[str, Any] | None) -> d
         texto = ("Aconteceu algum gasto fora do previsto? Me conta o que foi, quanto custa e quando vence.\n"
                  f"Por exemplo: \"dentista R$ 150 no dia {exemplo}, é extra\".")
         return {"resposta": texto, "sugestoes": [], "ancora": None, "campo_da_abertura": "despesas"}
+    if aviso == "compra":
+        # A compra entra como um gasto extra na data em que for paga: o cálculo da fatura é o mesmo do imprevisto.
+        exemplo = (ctx.data_ref + timedelta(days=7)).strftime("%d/%m/%Y")
+        texto = ("Me conta o que você quer comprar, quanto custa e em que dia vai pagar. "
+                 "Eu refaço as contas da fatura com essa compra.\n"
+                 f"Por exemplo: \"celular R$ 1.200 no dia {exemplo}\".")
+        return {"resposta": texto, "sugestoes": [], "ancora": None, "campo_da_abertura": "compra"}
     from app import visuais  # import tardio: app.visuais também usa app.agente.texto
 
     c = calculos.comparar_opcoes(ctx)  # os números do card do aviso
@@ -141,6 +151,8 @@ def _ancora(campo: str, ctx: ContextoCliente, sessao: dict[str, Any] | None) -> 
                   "Quer ver quanto dá para pagar sem apertar?"]
         return _pronto(linhas, ["Quero ver as opções", "Aconteceu um imprevisto"], campo, c["valor_fatura"],
                        [visuais.caixa_ate_renda(ctx, c)])
+    if campo == "meta":
+        return _meta(ctx, base)
     raio_x = painel.montar(ctx)["raio_x"]
     if campo == "gasto_por_dia" and (g := raio_x["gasto_por_dia"]):
         linhas = [f"Em {g['mes_ref']} você comprou {brl(g['total'])} no cartão.",
@@ -161,6 +173,30 @@ def _ancora(campo: str, ctx: ContextoCliente, sessao: dict[str, Any] | None) -> 
     if campo == "parcelas":
         return _pronto(["Não há compras parceladas nesta fatura."], ["Minha fatura"], campo, None)
     return _pronto(["Esse valor ainda não tem dados suficientes para eu explicar."], ["Minha fatura"], campo, None)
+
+
+def _meta(ctx: ContextoCliente, c: dict[str, Any]) -> dict[str, Any]:
+    """Quanto falta para a meta da persona e, se sobrar dinheiro depois da fatura, em quanto tempo chega lá."""
+    from app import personas  # import tardio: personas usa o painel, que usa app.agente.texto
+    from app.dados import repositorio
+
+    m = personas.meta_do_cliente(repositorio(), ctx.id_usuario)
+    if m is None:
+        return _pronto(["Você ainda não tem uma meta de poupança por aqui."], ["Minha fatura"], "meta", None)
+    linhas = [f"Sua meta é a {m['nome']}, de {brl(m['alvo'])}.",
+              f"Você já guardou {brl(m['guardado'])}, {m['pct']}% do caminho. Faltam {brl(m['falta'])}."]
+    # Sobra até a próxima renda pagando a fatura inteira, pelas mesmas contas do card da fatura.
+    sobra = round(c["disponivel_para_fatura"] - c["valor_fatura"], 2) if "valor_fatura" in c else 0.0
+    if sobra > 0:
+        meses = math.ceil(m["falta"] / sobra)
+        prazo = "1 mês" if meses == 1 else f"{meses} meses"
+        linhas.append(f"Pagando a fatura inteira, sobram {brl(sobra)} até a próxima renda, em "
+                      f"{ctx.proxima_renda.strftime('%d/%m')}. Guardando esse valor todo mês, você chega lá em uns {prazo}.")
+    else:
+        linhas.append("Este mês não sobra dinheiro para a meta depois da fatura e dos gastos essenciais. "
+                      "O primeiro passo é sair dos juros do cartão.")
+    linhas.append("Quer ver como fica a fatura?")
+    return _pronto(linhas, ["Minha fatura", "Posso comprar?"], "meta", m["guardado"])
 
 
 def _pronto(linhas: list[str], sugestoes: list[str], campo: str, valor: float | None,

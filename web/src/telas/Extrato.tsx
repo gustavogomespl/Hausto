@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { buscarTransacoes, mensagemDeErro, type Transacao } from '../api';
 import { iconeDaCategoria } from '../categorias';
 import { Carregando, Falha } from '../componentes/Estados';
+import { Oculto } from '../componentes/Oculto';
 import { dinheiroComSinal, tituloDoDia } from '../formato';
 import './Extrato.css';
 
@@ -76,7 +77,7 @@ export function Extrato({ idUsuario, hoje, dataRef }: Props) {
                   <span>{t.categoria}</span>
                 </div>
                 <span className={`lancamento-valor${t.tipo === 'E' ? ' entrada' : ''}`}>
-                  {dinheiroComSinal(t.vlr, t.tipo)}
+                  <Oculto>{dinheiroComSinal(t.vlr, t.tipo)}</Oculto>
                 </span>
               </li>
             ))}

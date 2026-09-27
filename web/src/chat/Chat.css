@@ -21,7 +21,7 @@
   z-index: 11;
   display: flex;
   flex-direction: column;
-  height: 82%;
+  height: 62%;
   background: var(--fundo);
   border-radius: 26px 26px 0 0;
   overflow: hidden;
@@ -39,6 +39,23 @@
 .chat.expandido {
   height: 100%;
   border-radius: 0;
+}
+
+/* Enquanto a alça é arrastada, a folha acompanha o dedo sem animação */
+.chat.puxando {
+  transition: none;
+}
+
+.chat-topo {
+  position: relative;
+  flex: none;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.chat.expandido .chat-cabeca {
+  padding-top: 32px;
 }
 
 .chat-alca {
@@ -63,7 +80,7 @@
 
 .chat-cabeca strong {
   flex: 1;
-  font-size: 1.1rem;
+  font-size: var(--fs-body-lg);
   font-weight: 700;
 }
 
@@ -102,13 +119,13 @@
   border-radius: 14px;
   background: var(--laranja-creme);
   border: 1px solid #f8d3bc;
-  font-size: 0.82rem;
+  font-size: var(--fs-caption);
   color: var(--texto-2);
 }
 
 .msg-contexto strong {
   color: var(--texto);
-  font-size: 1rem;
+  font-size: var(--fs-body);
   white-space: nowrap;
 }
 
@@ -123,7 +140,7 @@
 }
 
 .msg-hausto {
-  font-size: 1rem;
+  font-size: var(--fs-body);
   line-height: 1.55;
 }
 
@@ -159,10 +176,52 @@
 
 .msg-reacoes {
   display: flex;
-  gap: 22px;
-  margin-top: 8px;
-  padding-left: 4px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  margin-left: -10px;
+}
+
+.msg-reacoes button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
   color: var(--texto-2);
+}
+
+.msg-reacoes button:hover,
+.msg-reacoes button[aria-pressed='true'] {
+  color: var(--marinho);
+}
+
+.msg-reacoes button[aria-pressed='true']:not(.msg-ouvir) svg {
+  fill: currentColor;
+}
+
+.msg-obrigado {
+  margin-left: 4px;
+  font-size: var(--fs-caption);
+  color: var(--texto-2);
+}
+
+/* Cursor da digitação letra por letra */
+.msg-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 2px;
+  background: var(--laranja);
+  animation: piscar 0.8s steps(2) infinite;
+}
+
+@keyframes piscar {
+  50% {
+    opacity: 0;
+  }
 }
 
 .msg-erro {
@@ -170,7 +229,7 @@
   border-radius: 14px;
   background: #fdecee;
   color: var(--vermelho);
-  font-size: 0.9rem;
+  font-size: var(--fs-body-sm);
   line-height: 1.4;
 }
 
@@ -210,24 +269,48 @@
 }
 
 .chat-sugestoes {
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 var(--gutter) 10px;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: var(--gutter);
+  scrollbar-width: none;
+}
+
+.chat-sugestoes::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-sugestoes:empty {
+  display: none;
 }
 
 .chat-sugestoes button {
-  padding: 9px 15px;
-  border-radius: 999px;
+  flex: none;
+  scroll-snap-align: start;
+  white-space: nowrap;
+  padding: 8px 13px;
+  border-radius: 18px;
   border: 1.5px solid var(--laranja);
   background: #fff;
   color: var(--laranja);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--fs-body-sm);
 }
 
 .chat-sugestoes button:hover {
   background: var(--laranja-creme);
+}
+
+.chat-sugestoes button:active {
+  background: var(--laranja);
+  color: #fff;
+}
+
+.persona-maria .chat-sugestoes button {
+  padding: 10px 14px;
 }
 
 .chat-rodape {
@@ -245,7 +328,7 @@
   border-radius: 999px;
   border: 1.5px solid #dcdde3;
   background: #fff;
-  font-size: 0.98rem;
+  font-size: var(--fs-body-lg);
 }
 
 .chat-rodape input:focus {

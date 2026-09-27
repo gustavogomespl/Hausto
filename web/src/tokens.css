@@ -1,24 +1,46 @@
 :root {
-  --laranja: #f26522;
-  --laranja-claro: #fdeee4;
+  --laranja: #f4621f;
+  --laranja-claro: #fff1e9;
   --laranja-creme: #fff4ec;
-  --marinho: #1e2a78;
+  --marinho: #1c2570;
   --azul: #3a4fd8;
-  --azul-claro: #dfe3fb;
+  --azul-claro: #dde2fb;
   --roxo: #5b3fa8;
-  --fundo: #f0f1f5;
+  --fundo: #f0f1f4;
   --card: #ffffff;
-  --texto: #1b1c22;
-  --texto-2: #5f6270;
+  --texto: #1b1b1f;
+  --texto-2: #5c5f6a;
   --texto-3: #8b8e99;
   --linha: #e4e5ea;
-  --verde: #0e8043;
-  --ambar: #d98a00;
+  --verde: #0a7f3f;
+  --verde-creme: #eef8f2;
+  --ambar: #d98e04;
   --vermelho: #c8102e;
+  --vermelho-creme: #fff1f0;
 
-  --raio-card: 26px;
+  /* ---------- Tipografia: escala por nível de atenção ----------
+     Use SEMPRE um destes tokens; não crie tamanhos avulsos.
+     display  28  O número que a pessoa veio ver (saldo, fatura) e a manchete do onboarding
+     title    22  Título da tela e marca
+     heading  18  Chamada de card de destaque (card do Hausto)
+     body-lg  16  Nomes e ações principais (CTA, cabeçalho do chat, campo de texto*)
+     body     15  Texto de leitura (conversa, itens do extrato, rótulos de card)
+     body-sm  14  Apoio e botões secundários (chips, respostas rápidas, descrições)
+     caption  13  Metadados de baixa atenção (datas, legendas, tabelas de detalhe)
+     micro    12  Selos, tags, navegação e avisos legais — nunca menor que isto
+     * inputs ficam em 16px para o iOS não dar zoom ao focar. */
+  --fs-display: 28px;
+  --fs-title: 22px;
+  --fs-heading: 18px;
+  --fs-body-lg: 16px;
+  --fs-body: 15px;
+  --fs-body-sm: 14px;
+  --fs-caption: 13px;
+  --fs-micro: 12px;
+
+  --raio-card: 22px;
   --raio-tile: 22px;
-  --gutter: 18px;
+  --gutter: 20px;
   --sombra-moldura: 0 30px 80px rgba(20, 24, 60, 0.25);
 
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -69,6 +91,8 @@ button:disabled {
   width: 100%;
   height: 100dvh;
   overflow: hidden;
+  /* clip: nem foco nem scrollIntoView conseguem rolar a moldura e mostrar o chat escondido embaixo */
+  overflow: clip;
   background: var(--fundo);
 }
 
@@ -85,8 +109,10 @@ button:disabled {
     width: 390px;
     height: min(844px, calc(100dvh - 40px));
     border-radius: 44px;
-    box-shadow: var(--sombra-moldura);
-    border: 8px solid #15161c;
+    /* O aro do aparelho é sombra, não borda: assim a tela mantém os 390px de largura do app de referência */
+    box-shadow:
+      0 0 0 8px #15161c,
+      var(--sombra-moldura);
   }
 }
 
@@ -117,14 +143,14 @@ button:disabled {
 
 .pagina-titulo {
   margin: 0 0 6px;
-  font-size: 1.6rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .secao-titulo {
   margin: 12px 4px -2px;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -140,14 +166,14 @@ button:disabled {
 
 .card-cabeca h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fs-body);
   font-weight: 500;
   color: var(--texto-2);
 }
 
 .card-cabeca p {
   margin: 2px 0 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-caption);
   color: var(--texto-3);
 }
 
@@ -163,7 +189,33 @@ button:disabled {
 .botao-laranja {
   background: var(--laranja);
   color: #fff;
-  font-weight: 700;
-  border-radius: 14px;
-  padding: 12px 18px;
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 10px 16px;
+}
+
+/* "Ocultar valores": a máscara •••• respira como no app de referência */
+.oculto {
+  letter-spacing: 3px;
+}
+
+/* Persona INSS (Dona Maria): a escala inteira do chat sobe um degrau (mesmos tokens, valores maiores) */
+.persona-maria .chat {
+  --fs-body-lg: 18px;
+  --fs-body: 17px;
+  --fs-body-sm: 15px;
+  --fs-caption: 14px;
+  --fs-micro: 13px;
+}
+
+/* Carrossel sendo arrastado com o mouse (useArrastarRolagem) */
+.arrastando {
+  scroll-snap-type: none;
+  cursor: grabbing;
+  user-select: none;
+}
+
+.arrastando * {
+  pointer-events: none;
 }

@@ -143,6 +143,24 @@ describe('<Chat>', () => {
     expect(container.querySelector('.visual')).toBeNull();
   });
 
+  it('cada abertura pelo app começa uma conversa nova, sem a sessão anterior', async () => {
+    const fetchMock = mockFetch(
+      resposta(),
+      resposta({ ancora: { rotulo: 'Saldo', valor: 5700 }, resposta: 'Hoje sua conta tem R$ 5.700,00.', sugestoes: ['Ok'] }),
+    );
+    const props = { idUsuario: 'u-1', aberto: true, aoFechar: () => {} };
+    const { rerender, container } = render(<Chat {...props} pedido={{ id: 1, origem: { tipo: 'ancora', campo: 'fatura' } }} />);
+    expect(await screen.findByRole('button', { name: 'Quero ver' })).toBeTruthy();
+
+    rerender(<Chat {...props} pedido={{ id: 2, origem: { tipo: 'ancora', campo: 'saldo' } }} />);
+
+    expect(await screen.findByRole('button', { name: 'Ok' })).toBeTruthy();
+    expect(corpoDa(fetchMock, 1)).toEqual({ id_usuario: 'u-1', origem: { tipo: 'ancora', campo: 'saldo' } });
+    expect(screen.queryByText('Fatura aberta')).toBeNull();
+    expect(container.querySelectorAll('.msg-hausto')).toHaveLength(1);
+    expect(screen.getByText('Saldo')).toBeTruthy();
+  });
+
   it('mostra erro claro quando a API falha', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }));
     render(<Chat idUsuario="u-1" aberto pedido={{ id: 1, origem: { tipo: 'ancora', campo: 'saldo' } }} aoFechar={() => {}} />);

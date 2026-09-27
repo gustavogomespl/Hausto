@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { Painel, Plano } from '../api';
-import { RaioX } from './RaioX';
+import { alivioDasParcelas, dicaDasCategorias, RaioX } from './RaioX';
 
 const painel = (raioX: Partial<Painel['raio_x']> = {}): Painel => ({
   id_usuario: 'u-1',
@@ -51,7 +51,7 @@ describe('<RaioX>', () => {
 
     expect(screen.queryByText('Gasto no cartão por dia')).toBeNull();
     expect(screen.queryByText('Juros por dia')).toBeNull();
-    expect(screen.getByText('Parcelas deste mês')).toBeTruthy();
+    expect(screen.getByText('Parcelas')).toBeTruthy();
   });
 
   it('avisa quando não há parcelas e some com a lista', () => {
@@ -86,5 +86,88 @@ describe('<RaioX>', () => {
 
     expect(screen.queryByText(/Seu plano/)).toBeNull();
     expect(screen.queryByText(/do plano/)).toBeNull();
+  });
+
+  it('mostra quando vem a última parcela e a dica de quando a fatura fica mais leve', () => {
+    renderizar(painel());
+
+    // Fatura de dezembro, parcela 3 de 10: a última vem em julho; agosto já vem sem ela.
+    expect(screen.getByText(/a última vem em julho/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Em agosto, a fatura fica R$ 250 mais leve.' })).toBeTruthy();
+  });
+
+  it('põe em negrito os valores em reais e as porcentagens das dicas', () => {
+    renderizar(painel({ categorias: [{ categoria: 'Mercado', valor: 400 }, { categoria: 'Posto', valor: 200 }] }));
+
+    const negritos = [...document.querySelectorAll('.rx-dica b')].map((b) => b.textContent);
+    expect(negritos).toEqual(['R$ 400', '67%', 'R$ 250']);
+  });
+
+  it('tocar num mês do histórico lê como a fatura foi paga', () => {
+    renderizar(painel());
+
+    expect(screen.getByText('Toque num mês para ver como pagou.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Novembro: pagou só o mínimo' }));
+    expect(screen.getByText('Novembro: pagou só o mínimo.')).toBeTruthy();
+  });
+});
+
+describe('simulações do Raio-X', () => {
+  const META = { rotulo: 'Casa', nome: 'entrada da casa própria', icone: 'casa' as const, alvo: 10000, guardado: 3200, falta: 6800, pct: 32 };
+
+  it('mostra "Posso comprar?" e a meta; cada um abre o chat do seu jeito', () => {
+    const aoSimularCompra = vi.fn();
+    const aoAbrirAncora = vi.fn();
+    render(
+      <RaioX
+        painel={{ ...painel(), meta: META }}
+        plano={null}
+        aviso={undefined}
+        aoAbrirAncora={aoAbrirAncora}
+        aoAbrirAviso={() => {}}
+        aoSimularCompra={aoSimularCompra}
+      />,
+    );
+
+    expect(screen.getByText('Meta: casa')).toBeTruthy();
+    expect(screen.getByText('32% guardado')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Posso comprar\?/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Meta: casa, 32% guardado/ }));
+
+    expect(aoSimularCompra).toHaveBeenCalledOnce();
+    expect(aoAbrirAncora).toHaveBeenCalledWith('meta');
+  });
+
+  it('sem meta, "Posso comprar?" ocupa a linha inteira', () => {
+    const { container } = render(
+      <RaioX painel={painel()} plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} aoSimularCompra={() => {}} />,
+    );
+
+    expect(screen.queryByText(/guardado/)).toBeNull();
+    expect(container.querySelector('.rx-tile.inteira')).toBeTruthy();
+  });
+});
+
+describe('dicas do Raio-X', () => {
+  it('soma no mesmo mês as parcelas que acabam juntas', () => {
+    const itens = [
+      { descricao: 'Geladeira', valor: 210, atual: 3, total: 6 },
+      { descricao: 'Celular', valor: 120, atual: 5, total: 10 },
+      { descricao: 'TV', valor: 90, atual: 8, total: 11 },
+    ];
+    // Fatura de outubro (índice 9).
+    expect(alivioDasParcelas(itens, 9)).toBe('Em fevereiro, a fatura fica R$ 300 mais leve. Em abril, mais R$ 120.');
+  });
+
+  it('aponta a categoria que mais pesou', () => {
+    expect(
+      dicaDasCategorias([
+        { categoria: 'Posto', valor: 200 },
+        { categoria: 'Mercado', valor: 400 },
+      ]),
+    ).toBe('Mercado pesou mais: R$ 400, 67% das compras desta fatura.');
+    expect(dicaDasCategorias([{ categoria: 'Mercado', valor: 400 }])).toBe(
+      'Todas as compras desta fatura foram em Mercado: R$ 400.',
+    );
   });
 });

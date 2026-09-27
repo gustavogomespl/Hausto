@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Aviso, Painel } from '../api';
+import { ValoresOcultos } from '../componentes/Oculto';
 import { Inicio } from './Inicio';
 
 const PAINEL: Painel = {
@@ -92,5 +93,52 @@ describe('<Inicio>', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ver o que fazer' }));
     expect(aoAbrirAviso).toHaveBeenCalledWith(PLANO);
+  });
+
+  it('o olho esconde e mostra os valores', () => {
+    function ComOlho() {
+      const [ocultos, setOcultos] = useState(false);
+      return (
+        <ValoresOcultos.Provider value={{ ocultos, alternar: () => setOcultos((v) => !v) }}>
+          <Inicio painel={PAINEL} aoAbrirAncora={() => {}} {...semAviso} />
+        </ValoresOcultos.Provider>
+      );
+    }
+    render(<ComOlho />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar valores' }));
+    expect(screen.queryByText(/R\$ 850/)).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Valor oculto/ })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar valores' }));
+    expect(screen.getByText('R$ 850,00')).toBeTruthy();
+  });
+
+  it('mostra a dica do Hausto no card da fatura e abre a conversa sobre ela', () => {
+    const aoAbrirAncora = vi.fn();
+    render(
+      <Inicio
+        painel={PAINEL}
+        simulacao={{
+          valor_fatura: 1980,
+          disponivel_para_fatura: 370,
+          proxima_renda: '2026-01-05',
+          opcoes: {
+            integral: { atende_restricoes: false },
+            parcial_viavel: { valor_pago: 370, atende_restricoes: true },
+            minimo: { valor_pago: 297, atende_restricoes: true },
+          },
+          status: 'ok',
+          recomendada: 'parcial_viavel',
+        }}
+        aoAbrirAncora={aoAbrirAncora}
+        {...semAviso}
+      />,
+    );
+
+    expect(screen.getByText('Não pague tudo agora')).toBeTruthy();
+    expect(screen.getByText('R$ 370,00')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Não pague tudo agora/ }));
+    expect(aoAbrirAncora).toHaveBeenCalledWith('fatura');
   });
 });

@@ -24,39 +24,37 @@ export function Onboarding({ aoEscolher }: Props) {
   }, [tentativa]);
 
   return (
-    <div className="rolagem onboarding">
-      <header className="onb-topo">
-        <div className="onb-marca">
-          <span className="onb-logo">
-            <Brilho tamanho={20} />
-          </span>
-          Hausto
-        </div>
-        <span className="onb-selo">Teste prévio</span>
-        <h1>Com quem o Hausto vai conversar?</h1>
-        <p>Escolha uma persona. Cada persona é um cliente real da base, com o extrato dela.</p>
-      </header>
+    <>
+      <div className="rolagem onboarding">
+        <header className="onb-topo">
+          <div className="onb-marca">
+            <span className="onb-logo">
+              <Brilho tamanho={20} />
+            </span>
+            Hausto
+          </div>
+          <h1>Com quem o Hausto vai conversar?</h1>
+          <p>Escolha uma persona. Cada persona é um cliente real da base, com o extrato dela.</p>
+        </header>
 
-      <div className="onb-lista">
-        {erro && <Falha mensagem={erro} aoTentar={() => setTentativa((n) => n + 1)} />}
-        {!erro && !personas && <Carregando />}
-        {personas?.map((p) => (
-          <PersonaCard key={p.id} persona={p} marcada={escolhida?.id === p.id} aoMarcar={() => setEscolhida(p)} />
-        ))}
+        <div className="onb-lista">
+          {erro && <Falha mensagem={erro} aoTentar={() => setTentativa((n) => n + 1)} />}
+          {!erro && !personas && <Carregando />}
+          {personas?.map((p) => (
+            <PersonaCard key={p.id} persona={p} marcada={escolhida?.id === p.id} aoMarcar={() => setEscolhida(p)} />
+          ))}
+        </div>
       </div>
 
-      <footer className="onb-rodape">
-        <button
-          type="button"
-          className="onb-botao"
-          disabled={!escolhida}
-          onClick={() => escolhida && aoEscolher(escolhida)}
-        >
-          {escolhida ? `Entrar como ${escolhida.nome.split(' ')[0]}` : 'Escolha uma persona'}
-        </button>
-        <small>Dados fictícios, apenas para teste.</small>
-      </footer>
-    </div>
+      {escolhida && (
+        <footer className="onb-rodape">
+          <button type="button" className="onb-botao" onClick={() => aoEscolher(escolhida)}>
+            {`Entrar como ${escolhida.nome.split(' ')[0]}`}
+          </button>
+          <small>Dados fictícios, apenas para teste.</small>
+        </footer>
+      )}
+    </>
   );
 }
 

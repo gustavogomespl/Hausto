@@ -48,6 +48,38 @@ export const Busca = svg(<path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4
 export const Sino = svg(<path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15zM10 20.5a2.2 2.2 0 0 0 4 0" />);
 export const Balao = svg(<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H9l-5 4z" />);
 export const OlhoFechado = svg(<path d="M3 9.5c4.5 5 13.5 5 18 0M6.5 12.5 5 14.5M12 14v2.5M17.5 12.5l1.5 2" />);
+export const Olho = svg(
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" />
+  </>,
+);
+export const Cofrinho = svg(
+  <>
+    <rect x="4" y="4" width="16" height="15" rx="2.2" />
+    <path d="M12 9v3M7 19v2M17 19v2M12 7.4v.2" />
+  </>,
+);
+export const Sacola = svg(
+  <>
+    <path d="M5 8h14l-1.2 12H6.2z" />
+    <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
+  </>,
+);
+export const CasaMeta = svg(
+  <>
+    <path d="M4 11l8-6.5 8 6.5" />
+    <path d="M6 9.5V20h12V9.5M10 20v-5h4v5" />
+  </>,
+);
+export const Carro = svg(
+  <>
+    <path d="M5 17H3.5v-4.5L6 7h12l2.5 5.5V17H19M9 17h6M4 12.5h16" />
+    <circle cx="7" cy="17" r="2" />
+    <circle cx="17" cy="17" r="2" />
+  </>,
+);
+export const Escudo = svg(<path d="M12 3l7 3v5.5c0 4.5-3 8-7 9.5-4-1.5-7-5-7-9.5V6zM9 12l2 2 4-4" />);
 export const Pix = svg(<path d="M12 2.8 21.2 12 12 21.2 2.8 12zM12 7.8 7.8 12l4.2 4.2 4.2-4.2zM7.4 7.4l4.6 4.6 4.6-4.6" />);
 export const CodigoBarras = svg(<path d="M4.5 5v14M8 5v14M11.5 5v14M14.5 5v10M17.5 5v14M20 5v10" />);
 export const Credito = svg(

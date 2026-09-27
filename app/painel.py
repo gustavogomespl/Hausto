@@ -119,8 +119,8 @@ def avisos(ctx: ContextoCliente, plano_ativo: dict[str, Any] | None = None) -> l
     elif c.get("status") == "insuficiente":
         lista.append({
             "id": "sem_folga", "tela": "home", "rotulo": "HAUSTO", "cta": "Ver o que dá pra fazer",
-            "titulo": "Este mês o caixa não fecha",
-            "texto": f"Até a próxima renda, faltam {texto.brl(c['deficit_para_o_minimo'])} para pagar o mínimo sem apertar o essencial.",
+            "titulo": "Este mês o dinheiro não dá para a fatura",
+            "texto": f"Mesmo pagando só o mínimo, faltam {texto.brl(c['deficit_para_o_minimo'])} para as contas da casa até entrar dinheiro de novo.",
         })
     if plano_ativo and (prog := plano.progresso(plano_ativo, ctx))["status"] == "acima":
         lista.insert(0, {

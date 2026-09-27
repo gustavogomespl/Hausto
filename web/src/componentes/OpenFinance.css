@@ -1,0 +1,47 @@
+.of-linha {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 14px -22px 0;
+  padding: 2px 22px;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 22px;
+  scrollbar-width: none;
+}
+
+.of-linha::-webkit-scrollbar {
+  display: none;
+}
+
+.of-banco {
+  flex: none;
+  scroll-snap-align: start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid #d9dbe1;
+  border-radius: 999px;
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+.of-banco:active {
+  background: #f3f4f7;
+}
+
+.of-logo {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.of-mais {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f3f4f7;
+}

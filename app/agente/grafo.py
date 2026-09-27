@@ -384,10 +384,11 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                 mensagem = "Próxima renda: " + mensagem
         # O pedido de imprevisto contextualiza só a próxima fala, sem resolver
         # pendências existentes nem transformar intenção de pagamento em despesa.
-        elif (estado.get("campo_da_abertura") == "despesas" and not _impeditivas(estado)
+        elif (estado.get("campo_da_abertura") in {"despesas", "compra"} and not _impeditivas(estado)
               and re.search(r"\d", mensagem)
               and not re.search(r"despesa|gasto|compromisso|pag|fatura|m[ií]nimo|saldo|reserva|guardar|manter|sobrar|essenciais|renda|sal[aá]rio|vou receber|\bna\s+conta\b", mensagem, re.IGNORECASE)):
-            mensagem = "Despesa de " + mensagem
+            # Uma compra é sempre um gasto novo: entra como despesa extra, sem perguntar se já estava nas contas.
+            mensagem = ("Despesa extra de " if estado["campo_da_abertura"] == "compra" else "Despesa de ") + mensagem
         try:
             # Aberto por aviso ou valor ✦, a fala é o texto do botão: não há fato para extrair (nem LLM a esperar).
             inicio = time.perf_counter()

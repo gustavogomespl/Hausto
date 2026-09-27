@@ -9,14 +9,14 @@
 
 .admin-topo h1 {
   margin: 0;
-  font-size: 1.45rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .admin-topo p {
   margin: 4px 0 0;
-  font-size: 0.88rem;
+  font-size: var(--fs-body-sm);
   opacity: 0.8;
 }
 
@@ -52,13 +52,13 @@
 }
 
 .admin-persona strong {
-  font-size: 0.85rem;
+  font-size: var(--fs-caption);
   line-height: 1.2;
 }
 
 .admin-persona small {
   color: var(--texto-2);
-  font-size: 0.75rem;
+  font-size: var(--fs-micro);
 }
 
 .admin-avatar {
@@ -85,7 +85,7 @@
   border: 1.5px solid var(--linha);
   background: var(--fundo);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9rem;
+  font-size: var(--fs-body-lg);
 }
 
 .admin-form .botao-laranja:disabled {
@@ -118,13 +118,13 @@
 }
 
 .admin-clientes code {
-  font-size: 0.85rem;
+  font-size: var(--fs-caption);
 }
 
 .admin-persona-nome {
   flex: 1;
   color: var(--texto-2);
-  font-size: 0.88rem;
+  font-size: var(--fs-body-sm);
 }
 
 .admin-gatilho {
@@ -132,7 +132,7 @@
   border-radius: 999px;
   background: var(--laranja-claro);
   color: var(--laranja);
-  font-size: 0.72rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
 }
 
@@ -156,11 +156,11 @@
 .admin-data-atual span,
 .admin-data-atual small {
   color: var(--texto-2);
-  font-size: 0.8rem;
+  font-size: var(--fs-caption);
 }
 
 .admin-data-atual strong {
-  font-size: 1.45rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;

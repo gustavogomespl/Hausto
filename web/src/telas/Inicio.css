@@ -2,29 +2,55 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-right: 18px;
+}
+
+.inicio-olho {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border-radius: 50%;
+}
+
+.inicio-olho:active {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .atalhos {
   display: flex;
   gap: 12px;
-  margin: 4px calc(-1 * var(--gutter)) 6px;
-  padding: 0 var(--gutter) 2px;
+  margin: -8px calc(-1 * var(--gutter)) 6px;
+  padding: 14px var(--gutter) 2px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
 .atalho {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   flex: none;
   width: 76px;
-  font-size: 0.82rem;
+  font-size: var(--fs-body-sm);
   line-height: 1.25;
   text-align: center;
   color: var(--texto-2);
+}
+
+.atalho-selo {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--azul);
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .atalho-icone {
@@ -48,7 +74,7 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  font-size: 1.05rem;
+  font-size: var(--fs-body);
   color: var(--texto);
 }
 
@@ -96,25 +122,25 @@
 }
 
 .conta-rotulo {
-  font-size: 0.95rem;
+  font-size: var(--fs-body-sm);
   color: var(--texto-2);
   margin-bottom: 8px;
 }
 
 .conta-valor {
   align-self: flex-start;
-  font-size: 2rem;
+  font-size: var(--fs-display);
   letter-spacing: -0.02em;
 }
 
 .conta-vazio {
   margin: 4px 0 0;
-  font-size: 1.15rem;
+  font-size: var(--fs-heading);
   font-weight: 600;
 }
 
 .conta-rodape {
   margin-top: 16px;
-  font-size: 0.92rem;
+  font-size: var(--fs-caption);
   color: var(--texto-2);
 }

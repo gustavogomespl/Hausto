@@ -1,8 +1,15 @@
 export type Persona = { id: 'maria' | 'carla' | 'jonas'; nome: string; iniciais: string; idade: number; cidade: string; frase: string; renda: 'INSS' | 'CLT' | 'MEI'; cor: string; id_usuario: string };
 // GET /v1/personas -> Persona[]
 
+/** Meta de poupança da persona (a base não tem metas; vem da história da persona no backend). */
+export type Meta = {
+  rotulo: string; nome: string; icone: 'casa' | 'carro' | 'reserva';
+  alvo: number; guardado: number; falta: number; pct: number;
+};
+
 export type Painel = {
   id_usuario: string; data_ref: string; perfil: 'P1' | 'P2' | 'P3' | 'P4';
+  meta?: Meta | null;
   conta: { saldo: number };
   cartao: { fatura: number | null; vencimento: string /* YYYY-MM-DD */; origem: string; mes_ref: string | null };
   raio_x: {
@@ -34,10 +41,24 @@ export type Plano = {
 };
 // GET /v1/clientes/{id}/plano?data_ref= -> Plano | null  (null enquanto o cliente não aceitou um plano)
 
-export type ClienteResumo = { id_usuario: string; persona: string; gatilho: boolean };
+/** Uma das formas de pagar a fatura, já com as restrições de caixa conferidas pelo backend. */
+export type OpcaoPagamento = { valor_pago?: number; valor_fatura?: number; atende_restricoes: boolean };
+export type Simulacao =
+  | { erro: string }
+  | {
+      valor_fatura: number; disponivel_para_fatura: number; proxima_renda: string /* YYYY-MM-DD */;
+      opcoes: { integral: OpcaoPagamento; parcial_viavel: OpcaoPagamento; minimo: OpcaoPagamento };
+      status: 'ok' | 'insuficiente'; recomendada?: 'integral' | 'parcial_viavel' | 'minimo';
+    };
+// GET /v1/clientes/{id}/simulacao?data_ref= -> Simulacao  (as mesmas contas que o chat usa, sem LLM)
+
+export type ClienteResumo ={ id_usuario: string; persona: string; gatilho: boolean };
 // GET /v1/clientes?limite=50 -> ClienteResumo[]
 
-export type Origem = { tipo: 'aviso'; id: IdAviso } | { tipo: 'ancora'; campo: 'saldo' | 'fatura' | 'gasto_por_dia' | 'juros_por_dia' | 'parcelas' };
+// `compra` não é um card de aviso: é o "Posso comprar?" do Raio-X, que abre o chat pelo mesmo caminho.
+export type Origem =
+  | { tipo: 'aviso'; id: IdAviso | 'compra' }
+  | { tipo: 'ancora'; campo: 'saldo' | 'fatura' | 'gasto_por_dia' | 'juros_por_dia' | 'parcelas' | 'meta' };
 // Gráficos que acompanham a resposta do chat (0..n por mensagem).
 export type EtapaCaixa = { rotulo: string; valor: number; tipo: 'inicio' | 'entrada' | 'saida' | 'resultado' };
 export type OpcaoVisual = {
@@ -110,7 +131,9 @@ export const buscarTransacoes = (id: string, dataRef?: string) =>
   pedir<Transacao[]>(`${cliente(id)}/transacoes${consulta({ limite: 200, data_ref: dataRef })}`);
 export const buscarPlano = (id: string, dataRef?: string) =>
   pedir<Plano | null>(`${cliente(id)}/plano${consulta({ data_ref: dataRef })}`);
-export const listarClientes = () => pedir<ClienteResumo[]>('/v1/clientes?limite=50');
+export const buscarSimulacao = (id: string, dataRef?: string) =>
+  pedir<Simulacao>(`${cliente(id)}/simulacao${consulta({ data_ref: dataRef })}`);
+export const listarClientes =() => pedir<ClienteResumo[]>('/v1/clientes?limite=50');
 export const conversar = (pedido: PedidoChat) =>
   pedir<RespostaChat>('/v1/chat', { method: 'POST', body: JSON.stringify(pedido) });
 

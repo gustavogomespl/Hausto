@@ -3,14 +3,17 @@ import {
   buscarAvisos,
   buscarPainel,
   buscarPlano,
+  buscarSimulacao,
   mensagemDeErro,
   type Aviso,
   type Origem,
   type Painel,
   type Plano,
+  type Simulacao,
 } from './api';
 import { Chat, type PedidoAbertura } from './chat/Chat';
 import { Carregando, Falha } from './componentes/Estados';
+import { ValoresOcultos } from './componentes/Oculto';
 import { TabBar, type Aba } from './componentes/TabBar';
 import { Topo } from './componentes/Topo';
 import { comDataRef, iniciaisDe, lerSessao, salvarSessao, type SessaoSalva } from './sessao';
@@ -69,14 +72,22 @@ export default function App() {
     conteudo = <AppCliente key={`${sessao.id_usuario}#${versao}`} sessao={sessao} aba={tela} aoMudarAba={irPara} />;
   }
 
-  return <main className="moldura">{conteudo}</main>;
+  // A persona muda detalhes da tela (ex.: a Dona Maria lê o chat com letra maior).
+  const persona = tela !== 'admin' && sessao?.persona ? ` persona-${sessao.persona.id}` : '';
+  return <main className={`moldura${persona}`}>{conteudo}</main>;
 }
 
 type PropsCliente = { sessao: SessaoSalva; aba: Aba; aoMudarAba: (aba: Tela) => void };
 
 function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
   const { id_usuario: id, data_ref: dataRef } = sessao;
-  const [dados, setDados] = useState<{ painel: Painel; avisos: Aviso[]; plano: Plano | null } | null>(null);
+  const [dados, setDados] = useState<{
+    painel: Painel;
+    avisos: Aviso[];
+    plano: Plano | null;
+    simulacao: Simulacao | null;
+  } | null>(null);
+  const [ocultos, setOcultos] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState(0);
   const [dispensados, setDispensados] = useState<string[]>([]);
@@ -92,8 +103,9 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
       buscarPainel(id, dataRef),
       buscarAvisos(id, dataRef).catch(() => [] as Aviso[]),
       buscarPlano(id, dataRef).catch(() => null),
+      buscarSimulacao(id, dataRef).catch(() => null),
     ])
-      .then(([painel, avisos, plano]) => vivo && setDados({ painel, avisos, plano }))
+      .then(([painel, avisos, plano, simulacao]) => vivo && setDados({ painel, avisos, plano, simulacao }))
       .catch((e) => vivo && setErro(mensagemDeErro(e)));
     return () => {
       vivo = false;
@@ -126,6 +138,7 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
           <Inicio
             painel={painel}
             avisos={avisosDa('home')}
+            simulacao={dados.simulacao}
             aoAbrirAncora={abrirAncora}
             aoAbrirAviso={abrirAviso}
             aoDispensarAviso={(a) => setDispensados((d) => [...d, a.id])}
@@ -139,6 +152,7 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
             aviso={avisosDa('raiox')[0]}
             aoAbrirAncora={abrirAncora}
             aoAbrirAviso={abrirAviso}
+            aoSimularCompra={() => abrirChat({ tipo: 'aviso', id: 'compra' })}
           />
         );
       case 'extrato':
@@ -149,13 +163,20 @@ function AppCliente({ sessao, aba, aoMudarAba }: PropsCliente) {
   const precisaPagina = erro || !dados ? aba !== 'pagamentos' && aba !== 'menu' : false;
 
   return (
-    <>
+    <ValoresOcultos.Provider value={{ ocultos, alternar: () => setOcultos((v) => !v) }}>
       <div className="rolagem" ref={rolagem}>
         <Topo iniciais={iniciaisDe(sessao)} simulando={dataRef} aoAbrirChat={() => abrirChat()} />
         <div className="folha">{precisaPagina ? <div className="pagina">{renderizarAba()}</div> : renderizarAba()}</div>
       </div>
       <TabBar ativa={aba} aoMudar={aoMudarAba} />
-      <Chat idUsuario={id} dataRef={dataRef} aberto={chatAberto} pedido={pedido} aoFechar={() => setChatAberto(false)} />
-    </>
+      <Chat
+        idUsuario={id}
+        dataRef={dataRef}
+        aberto={chatAberto}
+        pedido={pedido}
+        ouvirEmAudio={sessao.persona?.id === 'maria'}
+        aoFechar={() => setChatAberto(false)}
+      />
+    </ValoresOcultos.Provider>
   );
 }

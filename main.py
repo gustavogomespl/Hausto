@@ -109,8 +109,8 @@ class Origem(BaseModel):
     """Aviso ou valor ✦ que abriu o chat. O texto de abertura fica no backend."""
 
     tipo: Literal["aviso", "ancora"]
-    id: Literal["fatura_vence", "sem_folga", "imprevisto", "plano"] | None = None
-    campo: Literal["saldo", "fatura", "gasto_por_dia", "juros_por_dia", "parcelas"] | None = None
+    id: Literal["fatura_vence", "sem_folga", "imprevisto", "plano", "compra"] | None = None
+    campo: Literal["saldo", "fatura", "gasto_por_dia", "juros_por_dia", "parcelas", "meta"] | None = None
 
     @model_validator(mode="after")
     def _completa(self) -> Origem:
@@ -182,7 +182,8 @@ def listar_personas() -> list[dict[str, Any]]:
 @app.get("/v1/clientes/{id_usuario}/painel")
 def painel_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str, Any]:
     """Tudo o que a Home e o Raio-X mostram, com os mesmos números do chat."""
-    return painel.montar(contexto_do_cliente(id_usuario, data_ref))
+    return {**painel.montar(contexto_do_cliente(id_usuario, data_ref)),
+            "meta": personas.meta_do_cliente(repositorio(), id_usuario)}
 
 
 @app.get("/v1/clientes/{id_usuario}/avisos")

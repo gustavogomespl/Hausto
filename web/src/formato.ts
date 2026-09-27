@@ -23,6 +23,9 @@ export const dinheiroComSinal = (valor: number, tipo: 'E' | 'S') =>
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
+/** 0 -> "janeiro"; aceita índices além de 11 (13 -> "fevereiro" do ano seguinte). */
+export const mesPorExtenso = (indice: number) => MESES[((indice % 12) + 12) % 12];
+
 /** Lê "YYYY-MM-DD" (ou ISO com hora) sem passar por fuso horário. */
 function partes(data: string) {
   const [ano, mes, dia] = data.slice(0, 10).split('-').map(Number);

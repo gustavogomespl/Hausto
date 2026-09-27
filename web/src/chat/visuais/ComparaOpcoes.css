@@ -23,7 +23,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.92rem;
+  font-size: var(--fs-body-sm);
   line-height: 1.3;
 }
 
@@ -32,7 +32,7 @@
 }
 
 .opcao-topo span {
-  font-size: 0.84rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--texto-2);
 }
@@ -42,7 +42,7 @@
   border-radius: 999px;
   background: #e3f3ea;
   color: var(--verde);
-  font-size: 0.76rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -64,13 +64,13 @@
 
 .opcao-juros {
   margin: 4px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--fs-micro);
   color: var(--texto-2);
 }
 
 .opcao-detalhe {
   margin: 6px 0 0;
-  font-size: 0.82rem;
+  font-size: var(--fs-caption);
   line-height: 1.4;
   color: var(--texto-2);
 }
@@ -89,6 +89,6 @@
   border-radius: 999px;
   background: #fdecee;
   color: var(--vermelho);
-  font-size: 0.78rem;
+  font-size: var(--fs-micro);
   font-weight: 600;
 }

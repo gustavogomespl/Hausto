@@ -26,8 +26,12 @@ export function TabBar({ ativa, aoMudar }: Props) {
           aria-label={rotulo}
           onClick={() => aoMudar(id)}
         >
-          <Icone tamanho={id === ativa ? 26 : 24} />
-          {id !== ativa && <span>{rotulo}</span>}
+          <span className="tabbar-icone">
+            <Icone tamanho={24} />
+          </span>
+          <span className="tabbar-rotulo" aria-hidden="true">
+            {rotulo}
+          </span>
         </button>
       ))}
     </nav>

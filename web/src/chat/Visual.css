@@ -8,13 +8,13 @@
 
 .visual h4 {
   margin: 0;
-  font-size: 0.98rem;
+  font-size: var(--fs-body);
   font-weight: 700;
 }
 
 .visual .visual-resumo {
   margin: 3px 0 14px;
-  font-size: 0.8rem;
+  font-size: var(--fs-caption);
   line-height: 1.4;
   color: var(--texto-2);
 }

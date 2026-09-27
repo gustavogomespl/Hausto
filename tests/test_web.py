@@ -120,6 +120,39 @@ def test_imprevisto_pede_o_gasto_e_a_resposta_curta_vira_despesa():
     assert t.dados_mudaram and not t.pendencias
 
 
+def test_compra_pede_o_que_e_e_entra_como_despesa_extra():
+    ctx = ctx_padrao()
+    grafo, _ = novo_grafo()
+    t = conversar(grafo, ctx, "s1", origem={"tipo": "aviso", "id": "compra"})
+    assert t.pergunta == "Posso comprar?" and "quanto custa" in t.resposta
+    dia = (ctx.data_ref + timedelta(days=3)).strftime("%d/%m/%Y")
+    # Sem dizer "é extra": uma compra é sempre um gasto novo.
+    t = conversar(grafo, ctx, "s1", f"celular R$ 1.200 no dia {dia}")
+    assert t.dados_mudaram and not t.pendencias
+
+
+def test_chip_posso_comprar_abre_a_compra():
+    grafo, _ = novo_grafo()
+    t = conversar(grafo, ctx_padrao(), "s1", "Posso comprar?")
+    assert t.pergunta == "Posso comprar?" and "quanto custa" in t.resposta
+
+
+def test_meta_da_persona_no_painel_e_no_chat(api):
+    for p in api.get("/v1/personas").json():
+        meta = api.get(f"/v1/clientes/{p['id_usuario']}/painel").json()["meta"]
+        assert meta["pct"] == round(meta["guardado"] / meta["alvo"] * 100)
+        assert meta["falta"] == meta["alvo"] - meta["guardado"]
+        r = api.post("/v1/chat", json={"id_usuario": p["id_usuario"], "origem": {"tipo": "ancora", "campo": "meta"}}).json()
+        assert r["ancora"] == {"rotulo": "Já guardado para a meta", "valor": meta["guardado"]}
+        assert f"{meta['pct']}% do caminho" in r["resposta"] and texto.brl(meta["falta"]) in r["resposta"]
+        assert not r["numeros_sem_fonte"]
+
+
+def test_cliente_sem_persona_nao_tem_meta():
+    # A base de exemplo só tem os clientes das personas; um id fora delas não tem meta.
+    assert personas.meta_do_cliente(REPO, "cliente-sem-persona") is None
+
+
 def test_chip_de_imprevisto_abre_o_mesmo_fluxo_do_aviso():
     grafo, _ = novo_grafo()
     t = conversar(grafo, ctx_padrao(), "s1", "Aconteceu um imprevisto")

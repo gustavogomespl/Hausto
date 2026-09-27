@@ -5,7 +5,7 @@
   gap: 12px;
   padding: 40px 20px;
   color: var(--texto-2);
-  font-size: 0.9rem;
+  font-size: var(--fs-body-sm);
   text-align: center;
 }
 

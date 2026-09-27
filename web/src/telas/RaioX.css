@@ -5,7 +5,7 @@
 }
 
 .raiox-titulo span {
-  font-size: 0.85rem;
+  font-size: var(--fs-body-sm);
   color: var(--texto-2);
 }
 
@@ -18,7 +18,7 @@
   align-items: center;
   gap: 10px;
   color: var(--texto-2);
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
 }
 
 .rx-bandeira {
@@ -51,7 +51,7 @@
 }
 
 .rx-destaque .valor {
-  font-size: 1.7rem;
+  font-size: var(--fs-display);
 }
 
 .rx-destaque > span {
@@ -60,7 +60,7 @@
 
 .rx-detalhe {
   margin: 6px 0 0;
-  font-size: 0.86rem;
+  font-size: var(--fs-caption);
   line-height: 1.45;
   color: var(--texto-2);
 }
@@ -80,7 +80,7 @@
 }
 
 .rx-mini .rx-valor {
-  font-size: 1.6rem;
+  font-size: var(--fs-title);
   margin-top: 8px;
 }
 
@@ -102,7 +102,7 @@
 }
 
 .rx-categoria-icone {
-  font-size: 1rem;
+  font-size: var(--fs-body-sm);
 }
 
 .rx-categoria-nome {
@@ -198,7 +198,7 @@
 }
 
 .rx-coluna-mes {
-  font-size: 0.72rem;
+  font-size: var(--fs-micro);
   color: var(--texto-2);
 }
 
@@ -207,7 +207,7 @@
   flex-wrap: wrap;
   gap: 6px 16px;
   margin-top: 14px;
-  font-size: 0.85rem;
+  font-size: var(--fs-caption);
   color: var(--texto-2);
 }
 
@@ -232,7 +232,7 @@
 }
 
 .rx-plano-limite {
-  font-size: 1.7rem;
+  font-size: var(--fs-display);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -251,11 +251,185 @@
 }
 
 .rx-plano-combinado dt {
-  font-size: 0.76rem;
+  font-size: var(--fs-micro);
   color: var(--texto-2);
 }
 
 .rx-plano-combinado dd {
   margin: 2px 0 0;
   font-weight: 700;
+}
+
+/* Números rápidos: dois cards lado a lado (juros e parcelas) */
+.rx-numeros {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rx-numeros .rx-mini {
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+}
+
+.rx-numeros .rx-mini.inteira {
+  grid-column: 1 / -1;
+}
+
+.card-cabeca.pequena h3 {
+  font-size: var(--fs-body-sm);
+  line-height: 1.3;
+}
+
+.rx-mini .rx-valor {
+  align-self: flex-start;
+}
+
+/* Dica ✦ do Hausto no pé dos cards de detalhe */
+.rx-dica {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--laranja-creme);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  text-align: left;
+  transition: filter 0.15s;
+}
+
+.rx-dica:hover,
+.rx-dica:focus-visible {
+  filter: brightness(0.97);
+}
+
+.rx-dica svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--laranja);
+}
+
+/* Histórico: tocar (ou passar o mouse) num mês destaca a coluna e lê o que aconteceu */
+.rx-coluna {
+  border-radius: 6px 6px 0 0;
+}
+
+.rx-coluna-barra {
+  transition: opacity 0.15s;
+}
+
+.rx-grafico.escolhendo .rx-coluna:not(.escolhida) .rx-coluna-barra {
+  opacity: 0.35;
+}
+
+.rx-leitura {
+  margin: 10px 0 0;
+  min-height: 1.45em;
+  font-size: var(--fs-body-sm);
+  line-height: 1.45;
+}
+
+.rx-dica b {
+  font-weight: 700;
+}
+
+/* Simulações: "Posso comprar?" e a meta, lado a lado */
+.rx-simulacoes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.rx-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: var(--raio-card);
+  background: var(--card);
+  text-align: left;
+  transition: transform 0.1s;
+}
+
+.rx-tile:active {
+  transform: scale(0.98);
+}
+
+.rx-tile.inteira {
+  grid-column: 1 / -1;
+}
+
+.rx-tile-cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rx-tile-cabeca > svg {
+  color: var(--texto-2);
+}
+
+.rx-tile-icone {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--marinho);
+  color: #fff;
+}
+
+.rx-tile-rotulo {
+  font-size: var(--fs-body-sm);
+  color: var(--texto-2);
+}
+
+.rx-tile-titulo {
+  margin-top: 6px;
+  font-size: var(--fs-body-lg);
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Celular estreito (menos de 375px): o título desce um degrau da escala para caber numa linha */
+@media (max-width: 374px) {
+  .rx-tile {
+    padding-inline: 14px;
+  }
+
+  .rx-tile-titulo {
+    font-size: var(--fs-body);
+  }
+}
+
+.rx-tile-barra {
+  display: block;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 3px;
+  background: #e6e7eb;
+  overflow: hidden;
+}
+
+.rx-tile-barra i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--laranja);
+}
+
+/* Números rápidos: respiro entre rótulo, valor e o texto de apoio (o pontilhado do valor pede espaço) */
+.rx-numeros .rx-mini .rx-valor {
+  margin-top: 12px;
+}
+
+.rx-numeros .rx-mini .rx-detalhe {
+  margin-top: 10px;
 }

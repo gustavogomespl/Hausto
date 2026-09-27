@@ -1,0 +1,52 @@
+.dica-fatura {
+  --tom: var(--vermelho);
+  --tom-fundo: var(--vermelho-creme);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: var(--tom-fundo);
+  font-size: var(--fs-caption);
+  text-align: left;
+  transition:
+    transform 0.12s,
+    filter 0.15s;
+}
+
+.dica-fatura.bom {
+  --tom: var(--verde);
+  --tom-fundo: var(--verde-creme);
+}
+
+.dica-fatura:hover,
+.dica-fatura:focus-visible {
+  filter: brightness(0.97);
+}
+
+.dica-fatura:active {
+  transform: scale(0.985);
+}
+
+.dica-rotulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dica-rotulo svg {
+  flex: none;
+  color: var(--tom);
+}
+
+.dica-acao {
+  white-space: nowrap;
+}
+
+.dica-acao b {
+  font-weight: 700;
+}

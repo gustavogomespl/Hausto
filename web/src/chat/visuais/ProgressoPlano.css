@@ -15,7 +15,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.84rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--texto-2);
 }
@@ -28,7 +28,7 @@
   border-radius: 999px;
   background: var(--fundo-status);
   color: var(--cor-status);
-  font-size: 0.78rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -74,7 +74,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.76rem;
+  font-size: var(--fs-micro);
   color: var(--texto-2);
 }
 
@@ -84,7 +84,7 @@
 
 .progresso-numeros dd {
   margin: 2px 0 0;
-  font-size: 0.92rem;
+  font-size: var(--fs-body-sm);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -100,7 +100,7 @@
   margin: 12px 0 0;
   padding-top: 10px;
   border-top: 1px solid var(--linha);
-  font-size: 0.82rem;
+  font-size: var(--fs-caption);
   color: var(--texto-2);
 }
 

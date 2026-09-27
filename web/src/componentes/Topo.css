@@ -17,7 +17,7 @@
   background: #fff;
   color: var(--texto);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--fs-body-lg);
 }
 
 .topo-icones {
@@ -31,13 +31,57 @@
   color: #fff;
 }
 
+.topo-nivel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: #f8834a;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topo-nivel-ponto {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--laranja);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+}
+
+.topo-sino {
+  position: relative;
+}
+
+.topo-sino::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b00020;
+  border: 2px solid var(--laranja);
+}
+
+.topo-icones {
+  margin-left: auto;
+}
+
 .topo-simulando {
-  margin-right: auto;
-  margin-left: 12px;
+  margin-left: 8px;
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--marinho);
-  font-size: 0.75rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   white-space: nowrap;
 }
