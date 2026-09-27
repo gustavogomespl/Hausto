@@ -98,7 +98,7 @@ def test_dado_novo_invalida_e_recalcula():
     grafo, _ = novo_grafo()
     conversar(grafo, ctx, "s1", "oi")
     t = conversar(grafo, ctx, "s1", "na verdade minha fatura veio R$ 1.000,00")
-    assert "R$ 1.000,00" in t.resposta and "informada pelo cliente" in t.resposta
+    assert "R$ 1.000,00" in t.resposta and "informada por você" in t.resposta
     assert t.dados_mudaram
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.features import ContextoCliente
@@ -13,13 +14,38 @@ def brl(v: float) -> str:
     return "R$ " + f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def origem_da_fatura(c: dict[str, Any]) -> str:
+    """Como o cliente entende a origem do valor; a calibração da estimativa fica fora da conversa."""
+    if c["fonte_fatura"] == "informada pelo cliente":
+        return "informada por você"
+    mes = re.search(r"\d{2}/\d{4}", c["fonte_fatura"])
+    return f"estimada pelo seu consumo de {mes.group(0)}" if mes else "estimada pelo seu consumo no cartão"
+
+
+def linha_deficit(c: dict[str, Any]) -> str:
+    return f"Pelas contas da simulação, faltam {brl(c['deficit_para_o_minimo'])} para pagar o mínimo sem apertar os essenciais."
+
+
+def escolha_incompativel(opcao: str, valor: float, c: dict[str, Any]) -> str:
+    minimo = c["opcoes"]["minimo"]["valor_pago"]
+    if opcao == "parcial" and valor < minimo:
+        motivo = f"{brl(valor)} fica abaixo do mínimo de {brl(minimo)}"
+    else:
+        falta = c["deficit_para_o_minimo"] if opcao == "minimo" and "deficit_para_o_minimo" in c else valor - c["disponivel_para_fatura"]
+        motivo = f"para {ROTULOS[opcao]} ({brl(valor)}), faltam {brl(falta)} para cobrir os essenciais até a próxima renda"
+    return (
+        f"Pelas contas da simulação, {motivo}, então não registro essa escolha. "
+        "Podemos rever a reserva, algum gasto essencial ou confirmar seu saldo de hoje. Por onde quer começar?"
+    )
+
+
 def resposta_padrao(ctx: ContextoCliente, c: dict[str, Any], dados_mudaram: bool = False) -> str:
     """O fluxo do diagrama em texto fixo: usada no modo simulado e como resposta segura."""
     op = c["opcoes"]
     venc = ctx.proximo_vencimento.strftime("%d/%m")
     linhas = ["Com o dado que você trouxe, refiz as contas."] if dados_mudaram else []
     linhas += [
-        f"Sua fatura com vencimento em {venc} deve ficar em {brl(c['valor_fatura'])} ({c['fonte_fatura']}).",
+        f"Sua fatura com vencimento em {venc} deve ficar em {brl(c['valor_fatura'])} ({origem_da_fatura(c)}).",
         f"No vencimento a conta deve ter {brl(c['saldo_projetado_no_vencimento'])}; "
         f"até a próxima renda, os essenciais considerados somam {brl(c['essenciais_ate_renda'])}.",
     ]

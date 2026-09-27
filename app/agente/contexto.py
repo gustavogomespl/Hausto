@@ -88,8 +88,12 @@ def atualizar_fatos(estado: dict[str, Any], e: Extracao, ctx: ContextoCliente) -
     # Pendência só interrompe o turno em que surge ou muda; ignorada, não trava a sessão.
     pendencias_novas = pendencias != (estado.get("pendencias") or [])
     ref = referencia(ctx)
+    # O objetivo declarado orienta a conversa, mas não muda o cálculo nem a versão dos fatos.
+    def _fatos(d: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in d.items() if k != "objetivo"}
+
     mudou = (
-        dados != (estado.get("dados") or {})
+        _fatos(dados) != _fatos(estado.get("dados") or {})
         or despesas != (estado.get("despesas") or [])
         or bool(estado.get("referencia_dados") and estado["referencia_dados"] != ref)
         or pendencias_novas

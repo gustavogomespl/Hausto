@@ -13,6 +13,7 @@ import json
 import logging
 import uuid
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,7 +46,9 @@ MAX_REESCRITAS = 1  # depois disso, a resposta segura (só números das tools) s
 
 ETAPAS = {
     "explicar_opcoes": "explique a simulação, distinguindo capacidade de caixa e comparação com taxas ilustrativas. Não apresente isso como recomendação contratual.",
-    "informar_deficit": "nenhuma opção cabe no caixa sem apertar os essenciais: mostre o déficit e os próximos passos, sem culpa.",
+    "informar_deficit": "nenhuma opção cabe no caixa sem apertar os essenciais. Responda primeiro à pergunta do cliente, "
+                        "sem culpa e em até 3 linhas. Nunca diga que sobra dinheiro, que uma opção cabe ou que ele deve pagar algo; "
+                        "o sistema acrescenta a frase com o valor que falta.",
 }
 
 
@@ -76,6 +79,10 @@ def _com_pendencias(resposta: str, estado: Estado) -> str:
     """O cálculo seguiu sem o que está pendente: o cliente precisa saber o que ficou de fora."""
     pendencias = estado.get("pendencias") or []
     return f"{resposta}\nPonto em aberto, fora deste cálculo: {pendencias[0]}" if pendencias else resposta
+
+
+# No ramo de insuficiência, o texto do modelo não pode tratar o déficit como sobra ou recomendação.
+_FALA_EM_SOBRA = re.compile(r"\bsobra(m|ndo|r)?\b|\bpague\b|\bpode pagar\b|recomend|tranquil|(?<!não )\bcabe(m)?\b", re.IGNORECASE)
 
 
 def _texto_do_cliente(estado: Estado) -> str:
@@ -120,6 +127,9 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         # Resposta curta à pergunta sobre um gasto sem repetir o substantivo.
         if estado.get("campo_pergunta_aberta") == "despesas" and mensagem.lstrip().lower().startswith("r$"):
             mensagem = "Despesa de " + mensagem
+        # Resposta curta ("é R$ 900") à pergunta sobre o valor da fatura.
+        elif estado.get("campo_pergunta_aberta") == "valor_fatura" and re.search(r"\d", mensagem) and "fatura" not in mensagem.lower():
+            mensagem = "Valor da fatura: " + mensagem
         try:
             e = extrator(mensagem)
         except ValidationError as erro:
@@ -135,8 +145,11 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return atualizacao
 
     def perguntar_cliente(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
-        pergunta = (estado.get("pendencias") or [texto.pergunta_sem_fatura(runtime.context.carregar())])[0]
-        return {"etapa": "perguntar_cliente", "escolha": None, "comparacao": None,
+        pendencias = estado.get("pendencias") or []
+        pergunta = pendencias[0] if pendencias else texto.pergunta_sem_fatura(runtime.context.carregar())
+        # Sem pendência, a pergunta é o valor da fatura: a próxima resposta curta preenche esse campo.
+        aberta = {} if pendencias else {"pergunta_aberta": pergunta, "campo_pergunta_aberta": "valor_fatura"}
+        return {**aberta, "etapa": "perguntar_cliente", "escolha": None, "comparacao": None,
                 "revisao": {"status": "precisa_esclarecer", "motivos": estado.get("pendencias", [])},
                 "eventos": _evento(estado, "contexto", "aguardando_informacao"), "messages": [AIMessage(pergunta)]}
 
@@ -169,9 +182,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
 
     def conversa(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
         ctx = runtime.context.carregar()
-        if agente is None or estado["comparacao"]["status"] == "insuficiente":
-            return {"rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]),
-                    "modo_resposta": "simulado" if agente is None else "deterministico_insuficiencia"}
+        if agente is None:
+            return {"rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]), "modo_resposta": "simulado"}
         historico = list(estado["messages"])  # só falas: tool calls ficam dentro do subgrafo
         try:
             saida = agente.invoke(
@@ -193,6 +205,14 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         novas = saida["messages"][len(historico):]
         tools = [m for m in novas if isinstance(m, ToolMessage)]
         final = next((m.text for m in reversed(novas) if isinstance(m, AIMessage) and m.text), "")
+        c = estado["comparacao"]
+        if c["status"] == "insuficiente":
+            # O modelo responde à pergunta; o valor que falta vem sempre da regra.
+            if _FALA_EM_SOBRA.search(final):
+                return {"rascunho": texto.resposta_padrao(ctx, c, estado["dados_mudaram"]), "correcao": None,
+                        "modo_resposta": "deterministico_insuficiencia", "eventos": _evento(estado, "conversa", "texto_descartado")}
+            deficit = texto.linha_deficit(c)
+            final = final if f"faltam {texto.brl(c['deficit_para_o_minimo'])}" in final else f"{final}\n{deficit}"
         return {
             "rascunho": final,
             "fontes": estado["fontes"] + [str(m.content) for m in tools],
@@ -230,7 +250,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             custo, atende = op["custo_total"], op["atende_restricoes"]
         if not atende:
             return {"escolha": None, "etapa": "escolha_incompativel", "revisao": {"status": "precisa_esclarecer", "motivos": ["escolha_viola_restricoes"]},
-                    "messages": [AIMessage("Esse valor não atende às restrições da simulação. Vamos rever o caixa e as condições antes de registrar uma escolha?")],
+                    "messages": [AIMessage(texto.escolha_incompativel(e["opcao"], valor, c))],
                     "eventos": _evento(estado, "revisao_escolha", "restricao_nao_atendida")}
         escolha = {**e, "valor": valor, "custo_total": custo, "atende_restricoes": atende,
                    "versao_contexto": estado["versao_contexto"], "id_proposta": uuid.uuid4().hex}
