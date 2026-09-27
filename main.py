@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -26,6 +27,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app import calculos, logs, painel, personas
 from app.agente import construir_grafo, conversar
+from app.agente.grafo import ConflitoSessao
 from app.agente.modelos import extrator, modelo_chat, modo_llm
 from app.dados import repositorio
 from app.features import ContextoCliente, montar_contexto
@@ -38,12 +40,27 @@ RAIZ = Path(__file__).resolve().parent
 # Memória de sessão (checkpointer, um thread por conversa) e de perfil (store: decisões registradas).
 # Em produção: checkpointer persistente e store no BigQuery/Firestore.
 STORE = InMemoryStore()
+_LOCK_GRAFO = RLock()
 
 
 @lru_cache(maxsize=1)
-def grafo() -> Any:
+def _grafo_cache() -> Any:
     modelo = modelo_chat()
     return construir_grafo(modelo=modelo, extrator=extrator(modelo), checkpointer=InMemorySaver(), store=STORE)
+
+
+def grafo() -> Any:
+    # lru_cache sozinho pode construir duas instâncias no primeiro acesso concorrente.
+    with _LOCK_GRAFO:
+        return _grafo_cache()
+
+
+def _limpar_grafo() -> None:
+    with _LOCK_GRAFO:
+        _grafo_cache.cache_clear()
+
+
+grafo.cache_clear = _limpar_grafo
 
 
 def contexto_do_cliente(id_usuario: str, data_ref: date | None = None) -> ContextoCliente:
@@ -78,9 +95,13 @@ async def registrar_request(request: Request, call_next):
         return resposta
     finally:
         ms = round((time.perf_counter() - inicio) * 1000)
-        logs.evento(log, f"[API] {request.method} {request.url.path} {status} em {ms} ms", metodo=request.method,
-                    rota=request.url.path, status=status, trace=trace, ms=ms)
-        logs.contexto.reset(token)
+        rota = getattr(request.scope.get("route"), "path", "rota_nao_encontrada")
+        try:
+            logs.evento(log, f"[API] {request.method} {rota} {status} em {ms} ms", metodo=request.method,
+                        rota=rota, status=status, trace=trace, ms=ms,
+                        **getattr(request.state, "log_campos", {}))
+        finally:
+            logs.contexto.reset(token)
 
 
 class Origem(BaseModel):
@@ -105,6 +126,7 @@ class PedidoChat(BaseModel):
     origem: Origem | None = None
     sessao_id: str | None = None
     data_ref: date | None = None
+    request_id: str | None = Field(None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
 
     @model_validator(mode="after")
     def _mensagem_ou_origem(self) -> PedidoChat:
@@ -130,6 +152,10 @@ class RespostaChat(BaseModel):
     sugestoes: list[str]
     ancora: dict[str, Any] | None
     pergunta: str | None
+    request_id: str = ""
+    resultados_especialistas: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    pendencias_impeditivas: list[str] = Field(default_factory=list)
+    pendencias_informativas: list[str] = Field(default_factory=list)
 
 
 # Web app (web/, React): build estático servido aqui. Sem build, cai na tela de teste antiga.
@@ -214,34 +240,49 @@ def decisoes(id_usuario: str) -> list[dict[str, Any]]:
 
 
 @app.post("/v1/chat", response_model=RespostaChat)
-def chat(pedido: PedidoChat) -> RespostaChat:
+def chat(pedido: PedidoChat, request: Request = None) -> RespostaChat:
+    request_id = pedido.request_id or uuid.uuid4().hex
     sessao = pedido.sessao_id or uuid.uuid4().hex
-    logs.adicionar(sessao=sessao, id_usuario=pedido.id_usuario)
+    correlacao = {"request_id": request_id, "sessao": sessao, "id_usuario": pedido.id_usuario}
+    # O endpoint síncrono roda em outro contexto; state leva só metadados ao middleware.
+    if request is not None:
+        request.state.log_campos = correlacao
+    token = logs.contexto.set({**logs.contexto.get(), **correlacao})
     inicio = time.perf_counter()
-    ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
-    origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
-    turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem)
-    # Texto da conversa só com LOG_CONTEUDO=1: por padrão, o log leva metadados, não o que o cliente disse.
-    conteudo = {"mensagem": pedido.mensagem, "resposta": turno.resposta} if os.getenv("LOG_CONTEUDO") == "1" else {}
-    ms = round((time.perf_counter() - inicio) * 1000)
-    logs.evento(log, f"[API][TURNO] {turno.etapa} · resposta {turno.modo_resposta} · {ms} ms", etapa=turno.etapa,
-                modo_resposta=turno.modo_resposta, origem=origem, tools=turno.tools, reescritas=turno.reescritas,
-                versao_contexto=turno.versao_contexto, turno_id=turno.turno_id, ms=ms, **conteudo)
-    return RespostaChat(
-        sessao_id=sessao,
-        resposta=turno.resposta,
-        modo=modo_llm(),
-        etapa=turno.etapa,
-        pendente_confirmacao=turno.pendente_confirmacao,
-        tools_chamadas=turno.tools,
-        numeros_sem_fonte=turno.numeros_sem_fonte,
-        versao_contexto=turno.versao_contexto,
-        turno_id=turno.turno_id,
-        eventos=turno.eventos,
-        revisao=turno.revisao,
-        modo_resposta=turno.modo_resposta,
-        pendencias=turno.pendencias,
-        sugestoes=turno.sugestoes,
-        ancora=turno.ancora,
-        pergunta=turno.pergunta,
-    )
+    try:
+        ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
+        origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
+        try:
+            turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem, request_id=request_id)
+        except ConflitoSessao as erro:
+            raise HTTPException(409, str(erro)) from erro
+        ms = round((time.perf_counter() - inicio) * 1000)
+        # Só a fala pública entra com opt-in; contexto, prompts e tools ficam fora.
+        conteudo = {"mensagem": pedido.mensagem, "resposta": turno.resposta} if os.getenv("LOG_CONTEUDO") == "1" else {}
+        logs.evento(log, f"[API][TURNO] {turno.etapa} · resposta {turno.modo_resposta} · {ms} ms", etapa=turno.etapa,
+                    modo_resposta=turno.modo_resposta, origem=origem, tools=turno.tools, reescritas=turno.reescritas,
+                    versao_contexto=turno.versao_contexto, turno_id=turno.turno_id, ms=ms, **correlacao, **conteudo)
+        return RespostaChat(
+            sessao_id=sessao,
+            resposta=turno.resposta,
+            modo=modo_llm(),
+            etapa=turno.etapa,
+            pendente_confirmacao=turno.pendente_confirmacao,
+            tools_chamadas=turno.tools,
+            numeros_sem_fonte=turno.numeros_sem_fonte,
+            versao_contexto=turno.versao_contexto,
+            turno_id=turno.turno_id,
+            eventos=turno.eventos,
+            revisao=turno.revisao,
+            modo_resposta=turno.modo_resposta,
+            pendencias=turno.pendencias,
+            sugestoes=turno.sugestoes,
+            ancora=turno.ancora,
+            pergunta=turno.pergunta,
+            request_id=turno.request_id,
+            resultados_especialistas=turno.resultados_especialistas,
+            pendencias_impeditivas=turno.pendencias_impeditivas,
+            pendencias_informativas=turno.pendencias_informativas,
+        )
+    finally:
+        logs.contexto.reset(token)

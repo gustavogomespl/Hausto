@@ -296,7 +296,7 @@ def test_negar_escolha_nao_pede_confirmacao(bruno, fluxo):
     assert not store.search(("decisoes", bruno.id_usuario))
 
 
-# ------------------------------------------------------------------ ajustes: confirmação natural e pendências que não travam
+# ------------------------------------------------------------------ confirmação natural e pendências impeditivas
 
 
 @pytest.mark.parametrize("mensagem", ["Sim, pode registrar", "pode", "isso mesmo", "fechado, pode registrar!"])
@@ -324,13 +324,23 @@ def test_negativa_com_dado_novo_reprocessa(bruno, fluxo):
     assert not store.search(("decisoes", bruno.id_usuario))
 
 
-def test_pendencia_ignorada_nao_trava_a_sessao(bruno, fluxo):
-    g, _ = fluxo
+def test_pendencia_ignorada_continua_bloqueando_ate_resolvida(bruno, fluxo):
+    g, store = fluxo
     conversar(g, bruno, "s1", INICIO)
-    assert conversar(g, bruno, "s1", "Meu salário atrasou").etapa == "perguntar_cliente"
-    t = conversar(g, bruno, "s1", "ok, e agora?")
-    assert t.etapa == "explicar_opcoes"
-    assert estado(g, bruno)["comparacao"]["disponivel_para_fatura"] == 3400
+    primeira = conversar(g, bruno, "s1", "Meu salário atrasou")
+    assert primeira.etapa == "perguntar_cliente"
+    for mensagem in ("ok, e agora?", "quero pagar o mínimo", "sim"):
+        t = conversar(g, bruno, "s1", mensagem)
+        assert t.etapa == "perguntar_cliente" and not t.pendente_confirmacao
+        assert t.versao_contexto == primeira.versao_contexto
+        assert estado(g, bruno)["comparacao"] is None
+        assert not store.search(("decisoes", bruno.id_usuario))
+    resolvida = conversar(g, bruno, "s1", "Meu salário chega em 10/11/2026")
+    assert not resolvida.pendencias and resolvida.etapa == "explicar_opcoes"
+    assert resolvida.versao_contexto > primeira.versao_contexto
+    assert conversar(g, bruno, "s1", "quero pagar o mínimo").pendente_confirmacao
+    conversar(g, bruno, "s1", "sim")
+    assert len(store.search(("decisoes", bruno.id_usuario))) == 1
 
 
 def test_valor_de_outro_campo_nao_vira_despesa():
@@ -352,10 +362,11 @@ def test_duvida_na_confirmacao_nao_cancela(bruno, fluxo):
     assert not store.search(("decisoes", bruno.id_usuario))
 
 
-def test_pendencia_ignorada_aparece_na_resposta(bruno, fluxo):
+def test_pendencia_ignorada_reitera_esclarecimento_sem_apresentar_calculo(bruno, fluxo):
     g, _ = fluxo
     conversar(g, bruno, "s1", INICIO)
     conversar(g, bruno, "s1", "Tenho despesa de R$ 500")
     t = conversar(g, bruno, "s1", "ok, e aí?")
-    assert t.etapa == "explicar_opcoes"
-    assert "fora deste cálculo" in t.resposta and t.pendencias[0] in t.resposta
+    assert t.etapa == "perguntar_cliente"
+    assert t.pendencias[0] in t.resposta
+    assert estado(g, bruno)["comparacao"] is None

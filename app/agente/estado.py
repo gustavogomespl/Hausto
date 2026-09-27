@@ -20,6 +20,9 @@ class Contexto:
     id_usuario: str
     data_ref: date | None = None
     cliente: ContextoCliente | None = None  # já montado pela API/testes; no Studio é carregado pelo id
+    request_id: str | None = None
+    sessao_id: str | None = None
+    thread_id: str | None = None
 
     def carregar(self) -> ContextoCliente:
         if self.cliente is None:
@@ -32,9 +35,13 @@ class Estado(MessagesState):
     dados: dict[str, Any]
     despesas: list[dict[str, Any]]
     pendencias: list[str]
+    pendencias_impeditivas: list[str]
+    pendencias_informativas: list[str]
     pendencias_novas: bool
     pergunta_aberta: str | None
     campo_pergunta_aberta: str | None
+    referencia_pergunta_aberta: str | None
+    perguntas_abertas: dict[str, str]
     origens: dict[str, str]
     versao_contexto: int
     referencia_dados: str
@@ -50,7 +57,13 @@ class Estado(MessagesState):
     reescritas: int
     numeros_sem_fonte: list[str]
     turno_id: str
+    request_id: str
+    sessao_id: str | None
+    thread_id: str | None
     eventos: list[dict[str, Any]]
+    eventos_entrada: list[dict[str, Any]]
+    resultados_especialistas: dict[str, dict[str, Any]]
+    resultados_tools: list[dict[str, Any]]
     revisao: dict[str, Any]
     modo_resposta: str
     erro_calculo: str | None

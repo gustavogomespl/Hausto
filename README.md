@@ -3,13 +3,13 @@
 Protótipo de gestão financeira para pessoa física: compreender a intenção do
 cliente, comparar o pagamento da fatura com o caixa e os compromissos até a
 próxima renda e explicar as consequências. Implementado em **Python 3.12,
-FastAPI, LangGraph/LangChain**, com integrações previstas para Gemini e BigQuery.
+FastAPI, LangGraph/LangChain**, com integrações existentes com Gemini/Vertex AI
+e BigQuery.
 
-Esta entrega implementa atualização de contexto, encaminhamento, revisão
-programada e registros de execução. **Os quatro agentes Mesh planejados ainda
-não estão implementados como especialistas independentes.** O fluxo atual tem
-extração de informações, um agente conversacional com ferramentas e etapas
-programadas. Nenhuma ferramenta executa pagamentos.
+Esta entrega organiza atualização de contexto, encaminhamento, revisão e
+registros de execução em **quatro especialistas lógicos no mesmo StateGraph**.
+O fluxo preserva a extração de informações, um agente conversacional com
+ferramentas e etapas programadas. Nenhuma ferramenta executa pagamentos.
 
 ## Executar localmente no Windows
 
@@ -51,6 +51,10 @@ $env:FONTE_DADOS = "mock"
 uv run --no-sync pytest -q
 ```
 
+Resultado da suíte completa após o rebase sobre a nova `origin/main`:
+**273 testes aprovados, 0 falhas e 0 skips**, em `mock/simulado`, com tracing
+desativado.
+
 A suíte usa dados locais e modelos falsos. Cobre cálculos, atualização do
 contexto, pendências, confirmação, revisão, isolamento de sessões e rotas da
 API; não valida chamadas reais ao Gemini ou ao BigQuery. Para regenerar
@@ -63,6 +67,30 @@ uv run --no-sync python scripts/gerar_mock_sintetico.py
 O cenário Bruno, com capacidade de R$ 3.400 caindo para R$ 2.900 após uma despesa
 de R$ 500, é um caso sintético em `tests/test_contexto_financeiro.py`. Ele não
 corresponde a um dos três clientes do CSV.
+
+### Baseline histórica
+
+Na baseline de `7ae270b79a27948c4c05bd53beff7a1da4906899`, antes desta
+implementação, foram coletados 141 testes: **139 passaram e 2 falharam em
+25,54 s**. Ambos falharam porque a geração de evals exigia a persona `P1` com
+status `ok`, ausente no fixture/mock usado naquela execução:
+
+- `tests/test_evals.py::test_criar_testes_gera_30_casos_com_asserts`
+- `tests/test_evals.py::test_sem_juiz_so_ficam_as_checagens`
+
+A repetição excluindo somente esses dois node IDs confirmou **139 passed,
+2 deselected em 4,72 s**, antes de qualquer implementação:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --tb=short --deselect=tests/test_evals.py::test_criar_testes_gera_30_casos_com_asserts --deselect=tests/test_evals.py::test_sem_juiz_so_ficam_as_checagens
+```
+
+Esses resultados históricos foram obtidos em `mock/simulado`, com tracing
+desativado. Após o rebase, os dois testes passam com os ajustes que já vieram
+da nova `origin/main` em `tests/test_evals.py`. Continuam na suíte, sem
+`xfail`, `skip` ou exclusão. Nenhum eval, fixture ou dado mock foi alterado
+durante a resolução dos conflitos. Qualquer nova falha deve ser investigada
+como regressão, sem ser atribuída automaticamente à baseline histórica.
 
 ## Conferir a jornada
 
@@ -84,6 +112,12 @@ nenhum débito é realizado. Mensagens com ressalvas não confirmam a proposta
 antiga. O extrator por regras reconhece um conjunto limitado de formulações;
 para datas, informe dia, mês e ano completos.
 
+Pendências financeiras impeditivas permanecem abertas até o campo ser
+esclarecido. Por exemplo, `Meu salário atrasou` exige uma nova data completa
+de renda; ignorar a pergunta ou escolher uma opção não libera apresentação,
+proposta ou confirmação. Uma nova pendência não apaga a anterior. Avisos
+explicitamente informativos permanecem separados e não bloqueiam esse fluxo.
+
 ## O que foi construído
 
 | Componente | Responsabilidade |
@@ -93,12 +127,40 @@ para datas, informe dia, mês e ano completos.
 | `app/agente/contexto_financeiro.py` | Adapta o contexto confirmado aos cálculos, preservando o extrato original e informando as premissas. |
 | `app/agente/grafo.py` | Encaminha para esclarecimento, cálculo, revisão, conversa ou confirmação. Separa falha técnica de insuficiência de caixa. |
 | `app/agente/revisao.py` e `app/guardrails.py` | Verificam versão, consistência básica, restrições e números da resposta. São verificações programadas, não um segundo parecer financeiro independente. |
+| `app/agente/contratos.py` | Define o envelope de especialista e as referências de evidências, sem recalcular valores financeiros. |
 
-Cada resposta da API inclui `turno_id`, `versao_contexto`, `eventos`, `revisao`,
-`pendencias` e `modo_resposta`. Eventos também são emitidos no log com o marcador
-`evento_hausto`, nome da etapa, status, versão e horário. `tools_chamadas` registra
-ferramentas chamadas pelo subagente conversacional; no modo simulado essa lista
-pode ficar vazia, e o cálculo programado aparece em `eventos`.
+Os quatro papéis lógicos são Contexto & Relacionamento, Conta & Liquidez,
+Compromissos & Alternativas e Revisão & Evidências. Os nós atuais continuam
+como passos internos desses papéis. Conta & Liquidez e Compromissos &
+Alternativas compartilham o resultado da mesma chamada a `comparar_contexto`;
+não há segundo motor financeiro, quatro APIs ou quatro `create_agent`.
+
+O contrato mínimo identifica `especialista`, `request_id`,
+`versao_contexto_consumida`, `referencia_dados`, `status`, `evidencias` e
+`pendencias`. A revisão confere a versão existente, o hash dos dados e a
+referência do resultado antes de apresentar, propor e confirmar. Resultado
+desatualizado (`stale`) ou sem evidência válida é recusado. O hash identifica
+conteúdo; não comprova a correção financeira nem constitui assinatura.
+
+Cada resposta da API inclui `request_id`, `turno_id`, `versao_contexto`,
+`resultados_especialistas`, `eventos`, `revisao`, `pendencias`,
+`pendencias_impeditivas`, `pendencias_informativas` e `modo_resposta`.
+
+| Identificador | Finalidade |
+| --- | --- |
+| `request_id` | Correlaciona uma requisição com execução, resposta, eventos e metadados do agente. É recebido no corpo de `/v1/chat` ou gerado na entrada; não garante idempotência. |
+| `turno_id` | Identifica um turno executado pelo grafo, inclusive a retomada de confirmação. |
+| `sessao_id` | Identifica a conversa e fica associado a um único `id_usuario` na instância do grafo. Reutilização por outro usuário retorna HTTP 409. |
+| `thread_id` | Chave interna do checkpoint derivada de usuário e sessão. |
+| `id_proposta` | Identifica a intenção apresentada para confirmação. O registro distingue a requisição da proposta da requisição que a confirmou. |
+
+Os eventos `evento_hausto` registram metadados da execução: identificadores,
+especialista, nó/tool, status, versão, hashes/referências, contagens de pendências,
+revisão e horário. Não copiam mensagens, transações ou valores financeiros para
+esse log estruturado. As evidências ficam no estado e nos registros em memória,
+sem persistência externa nova. `tools_chamadas` registra chamadas efetivas do
+agente conversacional; no modo simulado pode ficar vazia, e a chamada programada
+ao comparador aparece em `eventos`.
 
 ## Integrar a frente Conta e Compromissos
 
@@ -136,10 +198,11 @@ ou `MODO_LLM=gemini` com `GOOGLE_API_KEY`. Para dados, `FONTE_DADOS=bigquery` us
 o arquivo aponta para serviços externos, portanto não é necessário copiá-lo
 para a demonstração local acima.
 
-Antes da integração real, a equipe precisa conferir modelo disponível, região,
+Para executar as integrações existentes, confira modelo disponível, região,
 projeto, permissões, credenciais e eventuais custos. Não coloque chaves ou
-arquivos de credenciais no Git. **Gemini/Vertex e BigQuery reais não foram
-validados nesta entrega.**
+arquivos de credenciais no Git. **Esta branch não revalidou isoladamente os
+serviços externos Gemini/Vertex AI e BigQuery.** A validação descrita aqui foi
+local, em `mock/simulado`; as integrações já fazem parte do projeto.
 
 ## Limites atuais
 
@@ -147,7 +210,12 @@ validados nesta entrega.**
   e sessão no grafo não substitui controle de acesso. Use dados fictícios e
   execução local até implementar autenticação e autorização.
 - Sessões, decisões e cache ficam no processo. Não há persistência entre
-  reinícios nem coordenação entre várias instâncias.
+  reinícios nem coordenação entre várias instâncias. A associação da sessão ao
+  usuário e a serialização de seus turnos valem para a instância do grafo no
+  processo atual; não substituem autenticação nem coordenação distribuída.
+- O cache BigQuery permanece inalterado. Conferir o hash do contexto carregado
+  detecta alterações nesse snapshot, sem garantir que ele reflita a versão mais
+  recente dos dados remotos.
 - Taxas, mínimo de 15% e demais condições são fixos do protótipo. Não são
   condições contratuais verificadas; capacidade de caixa não é recomendação
   de pagamento. A revisão não comprova adequação financeira ou conformidade.

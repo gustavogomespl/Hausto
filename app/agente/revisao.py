@@ -9,6 +9,57 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from pydantic import ValidationError
+
+from app.agente.contratos import ResultadoEspecialista
+
+
+def revisar_evidencias(
+    resultado: dict[str, Any] | None,
+    *,
+    request_id: str,
+    versao_contexto: int,
+    referencia_dados: str,
+    pendencias_impeditivas: list[str],
+    referencia_esperada: str | None = None,
+) -> dict[str, Any]:
+    """Confere proveniência e atualidade, sem produzir cálculos financeiros.
+
+    O request esperado é explícito: na confirmação pode ser o da proposta
+    original. O request que confirma continua identificado separadamente.
+    """
+    if resultado is None:
+        return {"status": "bloqueado", "motivos": ["evidencias_ausentes"], "stale": False}
+    try:
+        contrato = ResultadoEspecialista.model_validate(resultado)
+    except ValidationError:
+        return {"status": "bloqueado", "motivos": ["contrato_evidencias_invalido"], "stale": False}
+
+    motivos = []
+    if contrato.request_id != request_id:
+        motivos.append("request_id_divergente")
+    if contrato.versao_contexto_consumida != versao_contexto:
+        motivos.append("versao_contexto_desatualizada")
+    if contrato.referencia_dados != referencia_dados:
+        motivos.append("referencia_dados_desatualizada")
+    if motivos:
+        return {"status": "recalcular", "motivos": motivos, "stale": True}
+    if pendencias_impeditivas or contrato.pendencias or contrato.status == "precisa_dados":
+        return {"status": "precisa_esclarecer", "motivos": ["pendencias_impeditivas"], "stale": False}
+    if contrato.status == "erro" or any(e.status == "erro" for e in contrato.evidencias):
+        return {"status": "erro_tecnico", "motivos": ["execucao_com_erro"], "stale": False}
+    if contrato.status == "recalcular":
+        return {"status": "recalcular", "motivos": ["especialista_exige_recalculo"], "stale": True}
+    if contrato.status == "bloqueado":
+        return {"status": "bloqueado", "motivos": ["especialista_bloqueado"], "stale": False}
+    if not contrato.evidencias:
+        return {"status": "bloqueado", "motivos": ["evidencias_ausentes"], "stale": False}
+    if referencia_esperada is not None and not any(
+        e.referencia == referencia_esperada for e in contrato.evidencias
+    ):
+        return {"status": "recalcular", "motivos": ["resultado_divergente_da_evidencia"], "stale": True}
+    return {"status": "pode_apresentar", "motivos": [], "stale": False}
+
 
 def revisar_comparacao(comparacao: dict[str, Any] | None, versao: int) -> dict[str, Any]:
     if not comparacao or comparacao.get("erro"):
