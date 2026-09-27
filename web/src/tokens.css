@@ -1,0 +1,169 @@
+:root {
+  --laranja: #f26522;
+  --laranja-claro: #fdeee4;
+  --laranja-creme: #fff4ec;
+  --marinho: #1e2a78;
+  --azul: #3a4fd8;
+  --azul-claro: #dfe3fb;
+  --roxo: #5b3fa8;
+  --fundo: #f0f1f5;
+  --card: #ffffff;
+  --texto: #1b1c22;
+  --texto-2: #5f6270;
+  --texto-3: #8b8e99;
+  --linha: #e4e5ea;
+  --verde: #0e8043;
+  --ambar: #d98a00;
+  --vermelho: #c8102e;
+
+  --raio-card: 26px;
+  --raio-tile: 22px;
+  --gutter: 18px;
+  --sombra-moldura: 0 30px 80px rgba(20, 24, 60, 0.25);
+
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--texto);
+  background: #dcdee6;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
+}
+
+/* Moldura: tela cheia no celular, "aparelho" centralizado no desktop. */
+.moldura {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--fundo);
+}
+
+@media (min-width: 520px) {
+  body {
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+  }
+  #root {
+    height: auto;
+  }
+  .moldura {
+    width: 390px;
+    height: min(844px, calc(100dvh - 40px));
+    border-radius: 44px;
+    box-shadow: var(--sombra-moldura);
+    border: 8px solid #15161c;
+  }
+}
+
+.rolagem {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.rolagem::-webkit-scrollbar {
+  display: none;
+}
+
+/* Primitivos compartilhados */
+.card {
+  background: var(--card);
+  border-radius: var(--raio-card);
+  padding: 20px;
+}
+
+.pagina {
+  padding: 26px var(--gutter) 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pagina-titulo {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.secao-titulo {
+  margin: 12px 4px -2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--texto-2);
+}
+
+.card-cabeca {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-cabeca h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--texto-2);
+}
+
+.card-cabeca p {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--texto-3);
+}
+
+.card-cabeca > svg {
+  color: var(--texto-2);
+  flex: none;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.botao-laranja {
+  background: var(--laranja);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 14px;
+  padding: 12px 18px;
+}

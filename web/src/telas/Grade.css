@@ -1,0 +1,67 @@
+.grade {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.grade-item {
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  padding: 14px 4px;
+  border-radius: var(--raio-tile);
+  background: #fff;
+  color: var(--texto-2);
+  font-size: 0.86rem;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.grade-item.com-icone {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  min-height: 92px;
+}
+
+.grade-item.com-icone svg {
+  color: var(--texto);
+}
+
+.menu-demo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 16px 18px;
+  border-radius: var(--raio-tile);
+  background: #fff;
+  border: 1.5px dashed #c9cde0;
+  text-align: left;
+}
+
+.menu-demo-icone {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--marinho);
+  color: #fff;
+}
+
+.menu-demo-texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-demo-texto small {
+  color: var(--texto-2);
+  font-size: 0.8rem;
+}
+
+.menu-demo > svg {
+  color: var(--texto-2);
+}

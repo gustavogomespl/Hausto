@@ -1,0 +1,210 @@
+import type { Aviso, CampoAncora, Painel } from '../api';
+import { iconeDaCategoria } from '../categorias';
+import { CardAviso } from '../componentes/CardAviso';
+import { Seta } from '../componentes/Icones';
+import { Valor } from '../componentes/Valor';
+import { dinheiroCurto, inicialDoMes, nomeDoMes } from '../formato';
+import './RaioX.css';
+
+type Props = {
+  painel: Painel;
+  aviso: Aviso | undefined;
+  aoAbrirAncora: (campo: CampoAncora) => void;
+  aoAbrirAviso: (aviso: Aviso) => void;
+};
+
+export function RaioX({ painel, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
+  const { raio_x: rx, cartao } = painel;
+  // A fatura leva o nome do mês em que vence (vence 25/12 -> fatura de dezembro).
+  const mesFatura = nomeDoMes(cartao.vencimento);
+
+  return (
+    <div className="pagina raiox">
+      <div className="raiox-titulo">
+        <h1 className="pagina-titulo">Raio-X</h1>
+        {mesFatura && <span>Fatura de {mesFatura}</span>}
+      </div>
+
+      {aviso && <CardAviso aviso={aviso} aoAbrir={aoAbrirAviso} />}
+
+      <h2 className="secao-titulo">Seu cartão</h2>
+
+      {rx.gasto_por_dia && (
+        <section className="card">
+          <div className="rx-cabeca-cartao">
+            <span className="rx-bandeira">
+              <span />
+              <span />
+            </span>
+            Gasto no cartão por dia
+          </div>
+          <div className="rx-destaque">
+            <Valor
+              valor={rx.gasto_por_dia.valor}
+              texto={dinheiroCurto(rx.gasto_por_dia.valor)}
+              campo="gasto_por_dia"
+              aoTocar={aoAbrirAncora}
+            />
+            <span>por dia</span>
+          </div>
+          <p className="rx-detalhe">
+            <b>{dinheiroCurto(rx.gasto_por_dia.valor)}</b> × {rx.gasto_por_dia.dias} dias ≈{' '}
+            <b>{dinheiroCurto(rx.gasto_por_dia.total)}</b> em compras
+          </p>
+          {cartao.fatura !== null && (
+            <div className="rx-linha-total">
+              <span>Fatura aberta</span>
+              <span>{dinheiroCurto(cartao.fatura)}</span>
+            </div>
+          )}
+        </section>
+      )}
+
+      {rx.juros_por_dia && (
+        <section className="card rx-mini">
+          <Cabeca titulo="Juros por dia" />
+          <Valor
+            className="rx-valor"
+            valor={rx.juros_por_dia.valor}
+            texto={dinheiroCurto(rx.juros_por_dia.valor)}
+            campo="juros_por_dia"
+            aoTocar={aoAbrirAncora}
+          />
+          <p className="rx-detalhe">
+            Uns <b>{dinheiroCurto(rx.juros_por_dia.custo_30_dias)}</b> no mês, pagando{' '}
+            <b>{dinheiroCurto(rx.juros_por_dia.pagando)}</b>
+          </p>
+        </section>
+      )}
+
+      <section className="card rx-mini">
+        <Cabeca titulo="Parcelas deste mês" />
+        <Valor
+          className="rx-valor"
+          valor={rx.parcelas.total_mes}
+          texto={dinheiroCurto(rx.parcelas.total_mes)}
+          campo="parcelas"
+          aoTocar={aoAbrirAncora}
+        />
+        <p className="rx-detalhe">{resumoParcelas(rx.parcelas.itens, mesFatura)}</p>
+      </section>
+
+      {(rx.categorias.length > 0 || rx.parcelas.itens.length > 0) && (
+        <h2 className="secao-titulo">Detalhes da fatura</h2>
+      )}
+
+      {rx.categorias.length > 0 && <Categorias categorias={rx.categorias} />}
+
+      {rx.parcelas.itens.length > 0 && (
+        <section className="card">
+          <Cabeca titulo="Compras parceladas" sub="Parcelas já cobradas, contando a deste mês" />
+          <ul className="rx-parcelas">
+            {rx.parcelas.itens.map((p, i) => (
+              <li key={`${i}-${p.descricao}`}>
+                <div className="rx-parcela-topo">
+                  <span>{p.descricao}</span>
+                  <b>
+                    {p.atual} de {p.total}
+                  </b>
+                </div>
+                <div className="rx-segmentos" aria-hidden="true">
+                  {Array.from({ length: p.total }, (_, i) => (
+                    <span key={i} className={i < p.atual ? 'pago' : ''} />
+                  ))}
+                </div>
+                <p className="rx-detalhe">
+                  <b>{dinheiroCurto(p.valor)}</b> por mês
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {rx.faturas.length > 0 && <Faturas faturas={rx.faturas} />}
+    </div>
+  );
+}
+
+function Cabeca({ titulo, sub }: { titulo: string; sub?: string }) {
+  return (
+    <div className="card-cabeca">
+      <div>
+        <h3>{titulo}</h3>
+        {sub && <p>{sub}</p>}
+      </div>
+      <Seta tamanho={22} />
+    </div>
+  );
+}
+
+function resumoParcelas(itens: Painel['raio_x']['parcelas']['itens'], mes: string | null) {
+  if (itens.length === 0) return 'Nenhuma parcela nesta fatura.';
+  const nomes = itens.map((p) => `${p.descricao} (${p.atual} de ${p.total})`);
+  const lista = nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}` : nomes[0];
+  return `${mes ? `Na fatura de ${mes}` : 'Nesta fatura'}: ${lista}`;
+}
+
+function Categorias({ categorias }: { categorias: Painel['raio_x']['categorias'] }) {
+  const ordenadas = [...categorias].sort((a, b) => b.valor - a.valor);
+  const maior = Math.max(...ordenadas.map((c) => c.valor), 1);
+  return (
+    <section className="card">
+      <Cabeca titulo="Onde foi o dinheiro do cartão" sub="Compras desta fatura, sem as parcelas" />
+      <ul className="rx-categorias">
+        {ordenadas.map((c) => (
+          <li key={c.categoria}>
+            <div className="rx-categoria-topo">
+              <span className="rx-categoria-icone">{iconeDaCategoria(c.categoria)}</span>
+              <span className="rx-categoria-nome">{c.categoria}</span>
+              <b>{dinheiroCurto(c.valor)}</b>
+            </div>
+            <div className="rx-barra" style={{ width: `${Math.max(4, (c.valor / maior) * 100)}%` }} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+const MODOS = {
+  integral: { rotulo: 'Tudo', altura: 100 },
+  parcial: { rotulo: 'Uma parte', altura: 52 },
+  minimo: { rotulo: 'Só o mínimo', altura: 18 },
+} as const;
+
+function Faturas({ faturas }: { faturas: Painel['raio_x']['faturas'] }) {
+  const periodo = `em ${faturas[0].mes.slice(0, 4)}`;
+  const conta = (modo: keyof typeof MODOS) => faturas.filter((f) => f.modo === modo).length;
+  const incompletas = faturas.length - conta('integral');
+  return (
+    <section className="card">
+      <Cabeca
+        titulo={`Como pagou as faturas ${periodo}`}
+        sub={`Parcial ou mínimo em ${incompletas} de ${faturas.length} faturas`}
+      />
+      <div className="rx-grafico" role="img" aria-label={`Como pagou as faturas ${periodo}`}>
+        {faturas.map((f) => (
+          <div key={f.mes} className="rx-coluna">
+            <div className="rx-coluna-area">
+              <span
+                className={`rx-coluna-barra ${f.modo}`}
+                style={{ height: `${MODOS[f.modo].altura}%` }}
+                title={`${nomeDoMes(f.mes)}: ${MODOS[f.modo].rotulo}`}
+              />
+            </div>
+            <span className="rx-coluna-mes">{inicialDoMes(f.mes)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="rx-legenda">
+        {(Object.keys(MODOS) as (keyof typeof MODOS)[]).map((modo) => (
+          <span key={modo}>
+            <i className={modo} />
+            {MODOS[modo].rotulo} <b>{conta(modo)}</b>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}

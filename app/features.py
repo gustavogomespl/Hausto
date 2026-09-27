@@ -17,6 +17,11 @@ MICRO_FATURA = "Pagamento de fatura"
 JANELA_FLUXO_MESES = 3
 
 
+def _inteiro(valor: Any) -> int:
+    """Colunas opcionais do extrato: vazio, None ou "6.0" viram inteiro."""
+    return int(float(valor)) if valor not in (None, "") else 0
+
+
 @dataclass(frozen=True)
 class Transacao:
     id_usuario: str
@@ -29,6 +34,8 @@ class Transacao:
     micro: str
     saldo_apos: float
     ordem: int = 0  # posição original (desempate dentro do mesmo dia)
+    parcela_atual: int = 0  # 0 = compra à vista
+    parcela_total: int = 0
 
     @classmethod
     def de_linha(cls, linha: dict[str, Any], ordem: int = 0) -> Transacao:
@@ -44,6 +51,8 @@ class Transacao:
             micro=str(linha["nom_cate_micro"]),
             saldo_apos=float(linha["saldo_apos"]),
             ordem=ordem,
+            parcela_atual=_inteiro(linha.get("parcela_atual")),
+            parcela_total=_inteiro(linha.get("parcela_total")),
         )
 
 

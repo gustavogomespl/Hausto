@@ -9,11 +9,11 @@ Só `atualizar_estado` (extração) e `conversa` (create_agent + tools) usam LLM
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-import uuid
-import hashlib
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,14 +28,13 @@ from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
 from app import calculos
-from app.agente import texto
-from app.agente.estado import Contexto, Estado, EstadoConversa
-from app.agente.extracao import Extrator, confirmou, extrair_por_regras, negou
+from app.agente import aberturas, texto
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, referencia
 from app.agente.contexto_financeiro import comparar_contexto
-from app.agente.extracao import Extracao
-from app.agente.revisao import revisar_comparacao
+from app.agente.estado import Contexto, Estado, EstadoConversa
+from app.agente.extracao import Extracao, Extrator, confirmou, extrair_por_regras, negou
 from app.agente.ferramentas import FERRAMENTAS
+from app.agente.revisao import revisar_comparacao
 from app.features import ContextoCliente
 from app.guardrails import RESPOSTA_INJECAO, numeros_sem_fonte, parece_injecao
 
@@ -116,7 +115,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
 
     def guardrail(estado: Estado) -> dict[str, Any]:
         turno = {"dados_mudaram": False, "rascunho": "", "correcao": None, "fontes": [], "tools": [], "reescritas": 0, "numeros_sem_fonte": [],
-                 "turno_id": uuid.uuid4().hex, "eventos": [], "revisao": {}, "erro_calculo": None, "modo_resposta": "deterministico"}
+                 "turno_id": uuid.uuid4().hex, "eventos": [], "revisao": {}, "erro_calculo": None, "modo_resposta": "deterministico",
+                 "sugestoes": [], "ancora": None}
         turno["eventos"] = _evento({**estado, **turno}, "guardrail", "concluido")
         if parece_injecao(_texto_do_cliente(estado)):
             return {**turno, "eventos": _evento({**estado, **turno, "eventos": []}, "guardrail", "bloqueado"), "etapa": "bloqueado", "messages": [AIMessage(RESPOSTA_INJECAO)]}
@@ -127,11 +127,17 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         # Resposta curta à pergunta sobre um gasto sem repetir o substantivo.
         if estado.get("campo_pergunta_aberta") == "despesas" and mensagem.lstrip().lower().startswith("r$"):
             mensagem = "Despesa de " + mensagem
+        # Resposta ao pedido de imprevisto ("dentista R$ 150 no dia ..."): sem o substantivo, não vira despesa.
+        # Vale só logo depois da abertura, e nunca para intenção de pagamento ("quero pagar R$ 200").
+        elif (estado.get("campo_da_abertura") == "despesas" and re.search(r"\d", mensagem)
+              and not re.search(r"despesa|gasto|compromisso|pag|fatura|m[ií]nimo", mensagem, re.IGNORECASE)):
+            mensagem = "Despesa de " + mensagem
         # Resposta curta ("é R$ 900") à pergunta sobre o valor da fatura.
         elif estado.get("campo_pergunta_aberta") == "valor_fatura" and re.search(r"\d", mensagem) and "fatura" not in mensagem.lower():
             mensagem = "Valor da fatura: " + mensagem
         try:
-            e = extrator(mensagem)
+            # Aberto por aviso ou valor ✦, a fala é o texto do botão: não há fato para extrair (nem LLM a esperar).
+            e = Extracao() if estado.get("origem") else extrator(mensagem)
         except ValidationError as erro:
             campo = str(erro.errors()[0]["loc"][0])
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente com o nome do campo?", campo_esclarecimento=campo if campo in {"valor_fatura", "saldo_atual", "reserva_desejada", "essenciais_informados", "proxima_renda", "despesas"} else None)
@@ -140,7 +146,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         incompletas = [d for d in estado.get("despesas", []) if d.get("adicional") is not False and not d.get("data")]
         if len(incompletas) == 1 and e.data_despesa_pendente and not e.despesas and e.campo_esclarecimento == "despesas":
             e = e.model_copy(update={"esclarecimento": None, "campo_esclarecimento": None})
-        atualizacao = atualizar_fatos(estado, e, runtime.context.carregar())
+        atualizacao = {**atualizar_fatos(estado, e, runtime.context.carregar()), "campo_da_abertura": None}
         atualizacao["eventos"] = _evento({**estado, **atualizacao}, "contexto", "atualizado" if atualizacao["dados_mudaram"] else "mantido")
         return atualizacao
 
@@ -170,6 +176,14 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                     "messages": [AIMessage(mensagem)]}
         return {"comparacao": c, "etapa": "explicar_opcoes" if c["status"] == "ok" else "informar_deficit",
                 "eventos": _evento(estado, "comparar_contexto", "concluido")}
+
+    def responder_origem(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
+        origem = estado["origem"]
+        abertura = aberturas.abrir(origem, runtime.context.carregar(), estado.get("comparacao"))
+        return {"messages": [AIMessage(abertura["resposta"])], "sugestoes": abertura["sugestoes"], "ancora": abertura["ancora"],
+                "campo_da_abertura": abertura.get("campo_da_abertura"), "origem": None,
+                "etapa": estado["etapa"] if aberturas.precisa_calculo(origem) else "abertura",
+                "eventos": _evento(estado, "abertura", "concluido", origem=origem)}
 
     def revisar_calculo(estado: Estado) -> dict[str, Any]:
         if estado.get("erro_calculo"):
@@ -291,6 +305,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return END if estado["etapa"] == "bloqueado" else "atualizar_estado"
 
     def dados_suficientes(estado: Estado, runtime: Runtime[Contexto]) -> str:
+        if estado.get("origem") and not aberturas.precisa_calculo(estado["origem"]):
+            return "responder_origem"
         if estado.get("pendencias") and estado.get("pendencias_novas"):
             return "perguntar_cliente"
         pronta = "valor_fatura" in estado["dados"] or calculos.prever_fatura(runtime.context.carregar())["pronta"]
@@ -299,6 +315,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
     def escolheu(estado: Estado) -> str:
         if estado.get("erro_calculo") or estado.get("revisao", {}).get("status") != "pode_apresentar":
             return END
+        if estado.get("origem"):
+            return "responder_origem"
         return "pedir_confirmacao" if estado.get("escolha") else "conversa"
 
     def escolha_valida(estado: Estado) -> str:
@@ -308,15 +326,16 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return "conversa" if estado.get("correcao") else END
 
     g = StateGraph(Estado, context_schema=Contexto)
-    for no in (guardrail, atualizar_estado, perguntar_cliente, calcular_opcoes, revisar_calculo, conversa, validar_numeros, pedir_confirmacao):
+    for no in (guardrail, atualizar_estado, perguntar_cliente, calcular_opcoes, revisar_calculo, responder_origem, conversa, validar_numeros, pedir_confirmacao):
         g.add_node(no.__name__, no)
     g.add_node("registrar_decisao", registrar_decisao, destinations=("guardrail", END))
     g.add_edge(START, "guardrail")
     g.add_conditional_edges("guardrail", bloqueado, ["atualizar_estado", END])
-    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente"])
+    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem"])
     g.add_edge("perguntar_cliente", END)
     g.add_edge("calcular_opcoes", "revisar_calculo")
-    g.add_conditional_edges("revisar_calculo", escolheu, ["pedir_confirmacao", "conversa", END])
+    g.add_conditional_edges("revisar_calculo", escolheu, ["pedir_confirmacao", "responder_origem", "conversa", END])
+    g.add_edge("responder_origem", END)
     g.add_edge("conversa", "validar_numeros")
     g.add_conditional_edges("validar_numeros", numeros_ok, ["conversa", END])
     g.add_conditional_edges("pedir_confirmacao", escolha_valida, ["registrar_decisao", END])
@@ -341,15 +360,24 @@ class Turno:
     revisao: dict[str, Any]
     modo_resposta: str
     pendencias: list[str]
+    sugestoes: list[str]
+    ancora: dict[str, Any] | None
+    pergunta: str | None  # o que aparece como fala do cliente quando o chat abre por aviso ou valor ✦
 
 
-def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str) -> Turno:
-    """Roda um turno. Se o grafo está parado pedindo confirmação, a mensagem retoma o interrupt."""
+def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | None = None, origem: dict[str, str] | None = None) -> Turno:
+    """Roda um turno. Se o grafo está parado pedindo confirmação, a mensagem retoma o interrupt.
+
+    `origem` abre o chat por um aviso ou valor ✦; alguns chips (ex.: "Minha fatura") equivalem a uma origem.
+    """
+    origem = origem or aberturas.origem_do_atalho(mensagem)
+    pergunta = aberturas.pergunta(origem) if origem else None
+    mensagem = pergunta or mensagem
     chave = json.dumps([ctx.id_usuario, sessao], ensure_ascii=False)
     config = {"configurable": {"thread_id": hashlib.sha256(chave.encode()).hexdigest()}, "recursion_limit": 30}
     contexto = Contexto(id_usuario=ctx.id_usuario, data_ref=ctx.data_ref, cliente=ctx)
     pendente = grafo.get_state(config).interrupts
-    entrada = Command(resume=mensagem) if pendente else {"messages": [HumanMessage(mensagem)]}
+    entrada = Command(resume=mensagem, update={"origem": origem}) if pendente else {"messages": [HumanMessage(mensagem)], "origem": origem}
     estado = grafo.invoke(entrada, config, context=contexto)
     interrupcoes = estado.get("__interrupt__") or []
     pedido = interrupcoes[0].value if interrupcoes else None
@@ -368,4 +396,7 @@ def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str) -> T
         revisao=estado.get("revisao", {}),
         modo_resposta=estado.get("modo_resposta", "deterministico"),
         pendencias=estado.get("pendencias", []),
+        sugestoes=["Sim", "Não"] if pedido else (estado.get("sugestoes") or texto.SUGESTOES.get(estado.get("etapa", ""), [])),
+        ancora=estado.get("ancora"),
+        pergunta=pergunta,
     )

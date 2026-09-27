@@ -7,6 +7,14 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# Web app (React + Vite): só o build estático vai para a imagem final.
+FROM node:22-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM python:3.12-slim-trixie
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -19,6 +27,7 @@ COPY --from=deps /app/.venv /app/.venv
 COPY main.py ./
 COPY app ./app
 COPY data ./data
+COPY --from=web /web/dist ./web/dist
 USER 10001:10001
 EXPOSE 8080
 CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips '*'"]

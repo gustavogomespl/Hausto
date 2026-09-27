@@ -8,19 +8,22 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app import calculos
+from app import calculos, painel, personas
 from app.agente import construir_grafo, conversar
 from app.agente.modelos import extrator, modelo_chat, modo_llm
 from app.dados import repositorio
@@ -51,14 +54,44 @@ def contexto_do_cliente(id_usuario: str, data_ref: date | None = None) -> Contex
 
 # ---------------------------------------------------------------- API
 
-app = FastAPI(title="Agente de Fatura", version="0.1.0")
+@asynccontextmanager
+async def _aquecer(_: FastAPI):
+    # Achar as personas percorre a base (~15 s no BigQuery): começa antes do primeiro acesso.
+    threading.Thread(target=lambda: personas.resolver(repositorio()), daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Agente de Fatura", version="0.1.0", lifespan=_aquecer)
+
+
+class Origem(BaseModel):
+    """Aviso ou valor ✦ que abriu o chat. O texto de abertura fica no backend."""
+
+    tipo: Literal["aviso", "ancora"]
+    id: Literal["fatura_vence", "sem_folga", "imprevisto"] | None = None
+    campo: Literal["saldo", "fatura", "gasto_por_dia", "juros_por_dia", "parcelas"] | None = None
+
+    @model_validator(mode="after")
+    def _completa(self) -> Origem:
+        if (self.tipo == "aviso") != (self.id is not None) or (self.tipo == "ancora") != (self.campo is not None):
+            raise ValueError("aviso precisa de id; ancora precisa de campo")
+        return self
 
 
 class PedidoChat(BaseModel):
+    """Uma mensagem do cliente ou uma origem (aviso/valor ✦). Com as duas, vale a origem."""
+
     id_usuario: str
-    mensagem: str = Field(min_length=1, max_length=2000)
+    mensagem: str | None = Field(None, min_length=1, max_length=2000)
+    origem: Origem | None = None
     sessao_id: str | None = None
     data_ref: date | None = None
+
+    @model_validator(mode="after")
+    def _mensagem_ou_origem(self) -> PedidoChat:
+        if not self.mensagem and not self.origem:
+            raise ValueError("envie uma mensagem ou uma origem")
+        return self
 
 
 class RespostaChat(BaseModel):
@@ -75,11 +108,39 @@ class RespostaChat(BaseModel):
     revisao: dict[str, Any]
     modo_resposta: str
     pendencias: list[str]
+    sugestoes: list[str]
+    ancora: dict[str, Any] | None
+    pergunta: str | None
+
+
+# Web app (web/, React): build estático servido aqui. Sem build, cai na tela de teste antiga.
+WEB = RAIZ / "web" / "dist"
+if (WEB / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=WEB / "assets"), name="assets")
 
 
 @app.get("/", include_in_schema=False)
+@app.get("/admin", include_in_schema=False)
 def tela() -> FileResponse:
-    return FileResponse(RAIZ / "app" / "static" / "index.html")
+    index = WEB / "index.html"
+    return FileResponse(index if index.exists() else RAIZ / "app" / "static" / "index.html")
+
+
+@app.get("/v1/personas")
+def listar_personas() -> list[dict[str, Any]]:
+    """Personas do modo demonstração, cada uma ligada a um cliente real da base."""
+    return personas.resolver(repositorio())
+
+
+@app.get("/v1/clientes/{id_usuario}/painel")
+def painel_do_cliente(id_usuario: str, data_ref: date | None = None) -> dict[str, Any]:
+    """Tudo o que a Home e o Raio-X mostram, com os mesmos números do chat."""
+    return painel.montar(contexto_do_cliente(id_usuario, data_ref))
+
+
+@app.get("/v1/clientes/{id_usuario}/avisos")
+def avisos_do_cliente(id_usuario: str, data_ref: date | None = None) -> list[dict[str, Any]]:
+    return painel.avisos(contexto_do_cliente(id_usuario, data_ref))
 
 
 @app.get("/saude")
@@ -105,8 +166,9 @@ def contexto(id_usuario: str, data_ref: date | None = None) -> dict[str, Any]:
 
 
 @app.get("/v1/clientes/{id_usuario}/transacoes")
-def transacoes(id_usuario: str, limite: int = Query(50, le=1000)) -> list[dict[str, Any]]:
-    tx = sorted(repositorio().transacoes(id_usuario), key=lambda t: (t.data, t.ordem), reverse=True)
+def transacoes(id_usuario: str, limite: int = Query(50, le=1000), data_ref: date | None = None) -> list[dict[str, Any]]:
+    """Extrato até a data de referência da simulação (o "hoje" do app)."""
+    tx = sorted(contexto_do_cliente(id_usuario, data_ref).transacoes, key=lambda t: (t.data, t.ordem), reverse=True)
     return [
         {"data": t.data.isoformat(), "tipo": t.tipo, "descr": t.descr, "vlr": t.vlr,
          "categoria": t.macro, "subcategoria": t.micro, "saldo_apos": t.saldo_apos}
@@ -136,7 +198,8 @@ def decisoes(id_usuario: str) -> list[dict[str, Any]]:
 def chat(pedido: PedidoChat) -> RespostaChat:
     sessao = pedido.sessao_id or uuid.uuid4().hex
     ctx = contexto_do_cliente(pedido.id_usuario, pedido.data_ref)
-    turno = conversar(grafo(), ctx, sessao, pedido.mensagem)
+    origem = pedido.origem.model_dump(exclude_none=True) if pedido.origem else None
+    turno = conversar(grafo(), ctx, sessao, pedido.mensagem, origem)
     log.info(
         "turno usuario=%s sessao=%s etapa=%s tools=%s reescritas=%d",
         ctx.id_usuario, sessao, turno.etapa, turno.tools, turno.reescritas,
@@ -155,4 +218,7 @@ def chat(pedido: PedidoChat) -> RespostaChat:
         revisao=turno.revisao,
         modo_resposta=turno.modo_resposta,
         pendencias=turno.pendencias,
+        sugestoes=turno.sugestoes,
+        ancora=turno.ancora,
+        pergunta=turno.pergunta,
     )

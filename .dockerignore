@@ -5,3 +5,7 @@ __pycache__
 .env
 bq-results-*.csv
 tests
+web/node_modules
+web/dist
+telas_hausto
+*.pptx
