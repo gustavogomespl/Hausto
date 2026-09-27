@@ -1,7 +1,8 @@
-import type { Aviso, CampoAncora, Painel, Plano } from '../api';
+import { useState } from 'react';
+import type { Aviso, CampoAncora, MetaDoCliente, Painel, Plano } from '../api';
 import { iconeDaCategoria } from '../categorias';
 import { CardAviso } from '../componentes/CardAviso';
-import { Seta } from '../componentes/Icones';
+import { Cofre, Sacola, Seta } from '../componentes/Icones';
 import { Valor } from '../componentes/Valor';
 import { ProgressoPlano } from '../chat/visuais/ProgressoPlano';
 import { diaMesNumerico, dinheiroCurto, inicialDoMes, nomeDoMes } from '../formato';
@@ -13,9 +14,10 @@ type Props = {
   aviso: Aviso | undefined;
   aoAbrirAncora: (campo: CampoAncora) => void;
   aoAbrirAviso: (aviso: Aviso) => void;
+  aoSalvarMeta?: (meta: MetaDoCliente) => Promise<void>;
 };
 
-export function RaioX({ painel, plano, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
+export function RaioX({ painel, plano, aviso, aoAbrirAncora, aoAbrirAviso, aoSalvarMeta }: Props) {
   const { raio_x: rx, cartao } = painel;
   // A fatura leva o nome do mês em que vence (vence 25/12 -> fatura de dezembro).
   const mesFatura = nomeDoMes(cartao.vencimento);
@@ -30,6 +32,8 @@ export function RaioX({ painel, plano, aviso, aoAbrirAncora, aoAbrirAviso }: Pro
       {plano && <SeuPlano plano={plano} />}
 
       {aviso && <CardAviso aviso={aviso} aoAbrir={aoAbrirAviso} />}
+
+      <Baloes meta={rx.meta} aoSalvarMeta={aoSalvarMeta} />
 
       <h2 className="secao-titulo">Seu cartão</h2>
 
@@ -126,6 +130,114 @@ export function RaioX({ painel, plano, aviso, aoAbrirAncora, aoAbrirAviso }: Pro
       )}
 
       {rx.faturas.length > 0 && <Faturas faturas={rx.faturas} />}
+    </div>
+  );
+}
+
+/** "Posso comprar?" (informativo) e a meta, que o cliente toca para definir a dele. */
+function Baloes({ meta, aoSalvarMeta }: { meta: Painel['raio_x']['meta']; aoSalvarMeta?: (m: MetaDoCliente) => Promise<void> }) {
+  const [editando, setEditando] = useState(false);
+  return (
+    <>
+      <div className="rx-baloes">
+        <section className="card rx-balao">
+          <span className="rx-balao-icone"><Sacola tamanho={18} /></span>
+          <p>Simular compra</p>
+          <strong>Posso comprar?</strong>
+        </section>
+        {meta && (
+          <button type="button" className="card rx-balao rx-balao-acao" onClick={() => setEditando(true)}
+            aria-label={`${tituloDaMeta(meta)}. Configurar meta`}>
+            <span className="rx-balao-topo">
+              <span className="rx-balao-icone"><Cofre tamanho={18} /></span>
+              <Seta tamanho={20} />
+            </span>
+            <span className="rx-balao-rotulo">{tituloDaMeta(meta)}</span>
+            {meta.tipo === 'sair_do_vermelho' ? (
+              <strong>Faltam {dinheiroCurto(meta.falta)}</strong>
+            ) : (
+              <>
+                <strong>{Math.round(meta.pct * 100)}% guardado</strong>
+                <span className="rx-balao-barra" aria-hidden="true">
+                  <span style={{ width: `${Math.max(3, meta.pct * 100)}%` }} />
+                </span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      {editando && (
+        <EditarMeta
+          inicial={meta?.tipo === 'personalizada' ? { nome: meta.nome, valor: meta.alvo } : undefined}
+          aoFechar={() => setEditando(false)}
+          aoSalvar={async (m) => {
+            await aoSalvarMeta?.(m);
+            setEditando(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function tituloDaMeta(meta: NonNullable<Painel['raio_x']['meta']>) {
+  if (meta.tipo === 'sair_do_vermelho') return 'Meta: sair do vermelho';
+  return meta.tipo === 'personalizada' ? `Meta: ${meta.nome}` : 'Meta: reserva';
+}
+
+function EditarMeta({ inicial, aoFechar, aoSalvar }: {
+  inicial?: MetaDoCliente; aoFechar: () => void; aoSalvar: (m: MetaDoCliente) => Promise<void>;
+}) {
+  const [nome, setNome] = useState(inicial?.nome ?? '');
+  const [valor, setValor] = useState(inicial ? String(inicial.valor) : '');
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState(false);
+  const numero = Number(valor.replace(/\./g, '').replace(',', '.'));
+  const valido = nome.trim().length > 0 && numero > 0;
+  return (
+    <div
+      className="rx-meta-fundo"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Configurar meta"
+      onKeyDown={(e) => e.key === 'Escape' && aoFechar()}
+      onClick={(e) => e.target === e.currentTarget && aoFechar()}
+    >
+      <form
+        className="card rx-meta-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!valido) return;
+          setSalvando(true);
+          setErro(false);
+          try {
+            await aoSalvar({ nome: nome.trim(), valor: numero });
+          } catch {
+            setErro(true);
+          } finally {
+            setSalvando(false);
+          }
+        }}
+      >
+        <h3>Sua meta</h3>
+        <label>
+          Nome da meta
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: casa, carro, reserva" maxLength={40} autoFocus />
+        </label>
+        <label>
+          Quanto quer juntar (R$)
+          <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="Ex.: 5.000" />
+        </label>
+        {erro && (
+          <p className="rx-meta-erro" role="alert">
+            Não deu para salvar agora. Tente de novo.
+          </p>
+        )}
+        <div className="rx-meta-botoes">
+          <button type="button" className="rx-meta-cancelar" onClick={aoFechar}>Cancelar</button>
+          <button type="submit" className="botao-laranja" disabled={!valido || salvando}>Salvar meta</button>
+        </div>
+      </form>
     </div>
   );
 }

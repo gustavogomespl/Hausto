@@ -14,12 +14,12 @@ from app import calculos
 from app.agente import texto
 from app.features import ContextoCliente, Transacao, somar_meses
 
-RENDAS = {"Beneficio INSS": "INSS", "Salario CLT": "CLT"}  # sem salário fixo: MEI / autônomo
+RENDAS = {"Beneficio INSS": "INSS", "Salario CLT": "CLT"}  # sem salário nem benefício: PJ (recebimentos avulsos)
 
 
 def renda_do(transacoes: list[Transacao]) -> str:
     micros = {t.micro for t in transacoes if t.tipo == "E"}
-    return next((renda for micro, renda in RENDAS.items() if micro in micros), "MEI")
+    return next((renda for micro, renda in RENDAS.items() if micro in micros), "PJ")
 
 
 def mes_da_fatura(ctx: ContextoCliente) -> tuple[int, int]:
@@ -70,7 +70,7 @@ def _categorias(ctx: ContextoCliente) -> list[dict[str, Any]]:
     return [{"categoria": k, "valor": round(v, 2)} for k, v in sorted(soma.items(), key=lambda kv: -kv[1])][:7]
 
 
-def montar(ctx: ContextoCliente) -> dict[str, Any]:
+def montar(ctx: ContextoCliente, meta_configurada: dict[str, Any] | None = None) -> dict[str, Any]:
     c = calculos.comparar_opcoes(ctx)
     return {
         "id_usuario": ctx.id_usuario,
@@ -88,6 +88,7 @@ def montar(ctx: ContextoCliente) -> dict[str, Any]:
             "juros_por_dia": _juros_por_dia(c),
             "parcelas": _parcelas(ctx),
             "categorias": _categorias(ctx),
+            "meta": _meta(ctx, meta_configurada),
             "faturas": [{"mes": f"{p.data.year}-{p.data.month:02d}", "modo": p.modo}
                         for p in ctx.historico_faturas if p.data.year == ctx.data_ref.year],
         },
@@ -96,11 +97,36 @@ def montar(ctx: ContextoCliente) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ avisos
 
-AVISO_IMPREVISTO = {
-    "id": "imprevisto", "tela": "raiox", "rotulo": "SIMULAR IMPREVISTO", "cta": "Simular meu imprevisto",
-    "titulo": "Aconteceu um gasto fora do previsto?",
-    "texto": "Conte o que foi, quanto custa e quando vence. Eu refaço as contas da fatura.",
+# Um imprevisto que combina com a renda do cliente, com valor proporcional a ela (≈5%, mínimo R$ 50).
+IMPREVISTOS = {
+    "INSS": ("O médico passou um remédio novo", "Custa {v} por mês. Veja como fica a conta da fatura."),
+    "CLT": ("A geladeira quebrou", "O conserto custa {v}. Veja como fica a conta da fatura."),
+    "PJ": ("O pneu do carro furou", "A troca custa {v}. Sem carro não tem trabalho. Veja como fica a conta."),
 }
+
+
+def valor_do_imprevisto(ctx: ContextoCliente) -> float:
+    return max(50.0, float(round(ctx.renda_mensal_media * 0.05, -1)))
+
+
+def _aviso_imprevisto(ctx: ContextoCliente) -> dict[str, Any]:
+    titulo, frase = IMPREVISTOS[renda_do(ctx.transacoes)]
+    return {"id": "imprevisto", "tela": "raiox", "rotulo": "SIMULAR IMPREVISTO", "cta": "Simular meu imprevisto",
+            "titulo": titulo, "texto": frase.format(v=texto.brl(valor_do_imprevisto(ctx)))}
+
+
+def _meta(ctx: ContextoCliente, configurada: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A meta que o cliente definiu, com o saldo como guardado. Sem meta: conta no vermelho, sair dele;
+    senão, reserva de três rendas."""
+    if configurada:
+        guardado = round(max(ctx.saldo_atual, 0.0), 2)
+        return {"tipo": "personalizada", "nome": configurada["nome"], "alvo": float(configurada["valor"]),
+                "guardado": guardado, "pct": round(min(guardado / configurada["valor"], 1.0), 2)}
+    if ctx.saldo_atual < 0:
+        return {"tipo": "sair_do_vermelho", "falta": round(-ctx.saldo_atual, 2)}
+    alvo = round(3 * ctx.renda_mensal_media, 2)
+    return {"tipo": "reserva", "alvo": alvo, "guardado": round(ctx.saldo_atual, 2),
+            "pct": round(min(ctx.saldo_atual / alvo, 1.0), 2) if alvo else 0.0}
 
 
 def avisos(ctx: ContextoCliente, plano_ativo: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -129,4 +155,4 @@ def avisos(ctx: ContextoCliente, plano_ativo: dict[str, Any] | None = None) -> l
             "texto": f"Nos últimos {prog['dias_decorridos']} dias foram {texto.brl(prog['gasto_real'])} no dia a dia; "
                      f"o plano previa {texto.brl(prog['gasto_previsto'])}.",
         })
-    return [*lista, AVISO_IMPREVISTO]
+    return [*lista, _aviso_imprevisto(ctx)]

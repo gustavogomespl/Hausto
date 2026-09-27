@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { Painel, Plano } from '../api';
 import { RaioX } from './RaioX';
 
@@ -86,5 +86,53 @@ describe('<RaioX>', () => {
 
     expect(screen.queryByText(/Seu plano/)).toBeNull();
     expect(screen.queryByText(/do plano/)).toBeNull();
+  });
+
+  it('mostra "Posso comprar?" e a meta que faz sentido com o saldo do cliente', () => {
+    const { rerender } = render(<RaioX plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} painel={painel({ meta: { tipo: 'sair_do_vermelho', falta: 1234.5 } })} />);
+    expect(screen.getByText('Posso comprar?')).toBeTruthy();
+    expect(screen.getByText('Meta: sair do vermelho')).toBeTruthy();
+    expect(screen.getByText(/Faltam R\$ 1\.234/)).toBeTruthy();
+
+    rerender(<RaioX plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} painel={painel({ meta: { tipo: 'reserva', alvo: 3000, guardado: 1050, pct: 0.35 } })} />);
+    expect(screen.getByText('Meta: reserva')).toBeTruthy();
+    expect(screen.getByText('35% guardado')).toBeTruthy();
+  });
+
+  it('o cliente toca na meta e define a dele', async () => {
+    const aoSalvarMeta = vi.fn().mockResolvedValue(undefined);
+    render(
+      <RaioX plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} aoSalvarMeta={aoSalvarMeta}
+        painel={painel({ meta: { tipo: 'sair_do_vermelho', falta: 500 } })} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /configurar meta/i }));
+    fireEvent.change(screen.getByLabelText('Nome da meta'), { target: { value: 'Casa' } });
+    fireEvent.change(screen.getByLabelText('Quanto quer juntar (R$)'), { target: { value: '8000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar meta' }));
+    await waitFor(() => expect(aoSalvarMeta).toHaveBeenCalledWith({ nome: 'Casa', valor: 8000 }));
+  });
+
+  it('mostra a meta que o cliente definiu', () => {
+    render(
+      <RaioX plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}}
+        painel={painel({ meta: { tipo: 'personalizada', nome: 'Casa', alvo: 8000, guardado: 2000, pct: 0.25 } })} />,
+    );
+    expect(screen.getByText('Meta: Casa')).toBeTruthy();
+    expect(screen.getByText('25% guardado')).toBeTruthy();
+  });
+
+  it('se salvar falhar, avisa no formulário; Esc fecha', async () => {
+    const aoSalvarMeta = vi.fn().mockRejectedValue(new Error('rede'));
+    render(
+      <RaioX plano={null} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} aoSalvarMeta={aoSalvarMeta}
+        painel={painel({ meta: { tipo: 'sair_do_vermelho', falta: 500 } })} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /configurar meta/i }));
+    fireEvent.change(screen.getByLabelText('Nome da meta'), { target: { value: 'Casa' } });
+    fireEvent.change(screen.getByLabelText('Quanto quer juntar (R$)'), { target: { value: '8000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar meta' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
