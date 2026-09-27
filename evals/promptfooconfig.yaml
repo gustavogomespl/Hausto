@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Agente de fatura Hausto - 30 roteiros multiturno com clientes reais
+
+# O provider ignora o prompt: cada caso é um roteiro inteiro (vars.roteiro).
+prompts:
+  - "{{roteiro_id}}"
+
+# Cada provider é uma coluna no painel. Para comparar com a versão multiagente, registre o
+# alvo em evals/alvo.py (ALVOS) e acrescente outro provider com `alvo: <nome>`.
+providers:
+  - id: file://provedor.py
+    label: agente-unico
+    config:
+      alvo: grafo
+
+tests: file://gerar_testes.py:criar_testes
+
+defaultTest:
+  options:
+    # Juiz LLM dos critérios juiz_*: Gemini 3.8 Flash na Vertex (Gemini 3.x só existe em "global").
+    provider:
+      id: vertex:gemini-3.8-flash
+      config:
+        projectId: batalha-time-11-5pyw
+        region: global
+        temperature: 0
+
+evaluateOptions:
+  maxConcurrency: 4

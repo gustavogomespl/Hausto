@@ -16,6 +16,10 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8", "httpx>=0.27", "duckdb>=1.1"]
+evals = [
+    "agentevals>=0.0.9",
+    "pyyaml>=6.0.3",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
