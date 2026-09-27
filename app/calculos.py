@@ -167,6 +167,21 @@ def projetar_essenciais_ate_renda(ctx: ContextoCliente) -> dict[str, Any]:
     }
 
 
+def _pagar_parte(valor_fatura: float, valor_pago: float, caixa: float, dias_renda: int) -> dict[str, Any]:
+    """Pagar só uma parte: o resto vai para o rotativo e, se nem essa parte cabe no saldo, a conta também
+    fica negativa até a renda. Os dois juros entram no custo; senão pagar tudo parece mais caro do que é."""
+    cartao = simular_custo_rolagem(valor_fatura, valor_pago)
+    conta = simular_pagamento_com_negativo(valor_pago, caixa, dias_renda)
+    return {
+        **cartao,
+        "juros_cartao": cartao["custo_total"],
+        "valor_no_negativo": conta["valor_no_negativo"],
+        "juros_conta": conta["custo_total"],
+        "custo_total": _brl(cartao["custo_total"] + conta["custo_total"]),
+        "divida_total": _brl(cartao["valor_rolado"] + conta["valor_no_negativo"]),
+    }
+
+
 def comparar_opcoes(
     ctx: ContextoCliente,
     valor_fatura: float | None = None,
@@ -209,11 +224,12 @@ def comparar_opcoes(
     valor_minimo = 0.15 * valor_fatura
 
     integral = simular_pagamento_com_negativo(valor_fatura, caixa, dias_renda)
-    integral["atende_restricoes"] = disponivel >= valor_fatura
+    integral.update(juros_cartao=0.0, juros_conta=integral["custo_total"], divida_total=integral["valor_no_negativo"],
+                    atende_restricoes=disponivel >= valor_fatura)
     pago_viavel = min(max(disponivel, valor_minimo), valor_fatura)
-    parcial = simular_custo_rolagem(valor_fatura, pago_viavel)
+    parcial = _pagar_parte(valor_fatura, pago_viavel, caixa, dias_renda)
     parcial["atende_restricoes"] = disponivel >= valor_minimo
-    minimo = simular_custo_rolagem(valor_fatura, valor_minimo)
+    minimo = _pagar_parte(valor_fatura, valor_minimo, caixa, dias_renda)
     minimo["atende_restricoes"] = disponivel >= valor_minimo
     opcoes = {"integral": integral, "parcial_viavel": parcial, "minimo": minimo}
 

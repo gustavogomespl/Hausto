@@ -15,14 +15,16 @@ const ATALHOS: { rotulo: string; Icone: ComponentType<{ tamanho?: number }> }[] 
 
 type Props = {
   painel: Painel;
-  aviso: Aviso | undefined;
+  avisos: Aviso[];
   aoAbrirAncora: (campo: CampoAncora) => void;
   aoAbrirAviso: (aviso: Aviso) => void;
   aoDispensarAviso: (aviso: Aviso) => void;
 };
 
-export function Inicio({ painel, aviso, aoAbrirAncora, aoAbrirAviso, aoDispensarAviso }: Props) {
+export function Inicio({ painel, avisos, aoAbrirAncora, aoAbrirAviso, aoDispensarAviso }: Props) {
   const { conta, cartao } = painel;
+  // O acompanhamento do plano combinado vem antes dos demais avisos.
+  const emOrdem = [...avisos].sort((a, b) => Number(b.id === 'plano') - Number(a.id === 'plano'));
   return (
     <div className="pagina">
       <div className="inicio-titulo">
@@ -41,9 +43,9 @@ export function Inicio({ painel, aviso, aoAbrirAncora, aoAbrirAviso, aoDispensar
         ))}
       </div>
 
-      {aviso && (
-        <CardAviso aviso={aviso} aoAbrir={aoAbrirAviso} aoDispensar={() => aoDispensarAviso(aviso)} />
-      )}
+      {emOrdem.map((aviso) => (
+        <CardAviso key={aviso.id} aviso={aviso} aoAbrir={aoAbrirAviso} aoDispensar={() => aoDispensarAviso(aviso)} />
+      ))}
 
       <section className="card conta">
         <div className="conta-cabeca">

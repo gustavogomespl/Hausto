@@ -5,6 +5,7 @@ Revisão aprovada -> conversa/validar_numeros ou pedir_confirmacao/registrar_dec
 Uma ressalva na confirmação volta à entrada e invalida a proposta pendente.
 
 Só `atualizar_estado` (extração) e `conversa` (create_agent + tools) usam LLM; o resto é regra.
+A `conversa` orquestra: faz as contas pelas tools e delega o plano ao subagente `planejador`.
 """
 
 from __future__ import annotations
@@ -33,8 +34,8 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
-from app import calculos, logs
-from app.agente import aberturas, texto
+from app import calculos, logs, plano
+from app.agente import aberturas, juiz, planejador, texto
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, pode_contextualizar_despesa, referencia
 from app.agente.contexto_financeiro import comparar_contexto
 from app.agente.contratos import ResultadoEspecialista, referencia_resultado
@@ -43,7 +44,7 @@ from app.agente.extracao import Extracao, Extrator, confirmou, extrair_por_regra
 from app.agente.ferramentas import FERRAMENTAS
 from app.agente.revisao import revisar_comparacao, revisar_evidencias
 from app.features import ContextoCliente
-from app.guardrails import RESPOSTA_INJECAO, numeros_sem_fonte, parece_injecao
+from app.guardrails import CORRECOES, RESPOSTA_INJECAO, mascarar, numeros_sem_fonte, parece_injecao, problemas_na_resposta
 
 log = logging.getLogger("agente")
 
@@ -63,13 +64,17 @@ if not any(f.name == "erro_extracao_sem_conteudo" for f in log.filters):
     log.addFilter(_ErroExtracaoSemConteudo("erro_extracao_sem_conteudo"))
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8")
+# Aflição não bloqueia: o turno segue, com o tom ajustado.
+ACOLHER = ("O cliente parece aflito: comece com uma frase curta de acolhimento, sem culpa, e siga ajudando. "
+           "Não diga para ficar tranquilo nem que vai dar tudo certo.")
+BLOQUEIA = frozenset({"injecao", "ofensa_sem_pedido", "fora_do_escopo"})
 MAX_REESCRITAS = 1  # depois disso, a resposta segura (só números das tools) substitui a do modelo
 
 # Papéis lógicos no mesmo StateGraph; nenhum motor/agente financeiro novo.
 ESPECIALISTAS = {
-    "contexto_relacionamento": ("guardrail", "contexto", "abertura", "conversa", "seguranca_sessao"),
+    "contexto_relacionamento": ("guardrail", "contexto", "abertura", "conversa", "seguranca_sessao", "mostrar_visual"),
     "conta_liquidez": ("projetar_saldo_ate_vencimento",),
-    "compromissos_alternativas": ("calcular_opcoes", "comparar_contexto", "prever_fatura", "projetar_essenciais_ate_renda", "simular_custo_rolagem", "simular_pagamento_com_negativo", "comparar_opcoes"),
+    "compromissos_alternativas": ("calcular_opcoes", "comparar_contexto", "prever_fatura", "projetar_essenciais_ate_renda", "simular_custo_rolagem", "simular_pagamento_com_negativo", "comparar_opcoes", "montar_plano"),
     "revisao_evidencias": ("revisao", "revisao_texto", "revisao_escolha", "confirmacao", "revisar_calculo", "validar_numeros", "pedir_confirmacao", "registrar_decisao"),
 }
 _SESSOES: WeakKeyDictionary = WeakKeyDictionary()
@@ -83,6 +88,14 @@ class ConflitoSessao(ValueError):
 def _impeditivas(estado: Estado) -> list[str]:
     # Snapshots anteriores à classificação falham de forma conservadora.
     return estado.get("pendencias_impeditivas", estado.get("pendencias", []))
+
+
+def _saida_tool(m: ToolMessage) -> dict[str, Any]:
+    try:
+        saida = json.loads(m.content) if isinstance(m.content, str) else m.content
+    except (TypeError, ValueError):
+        return {}
+    return saida if isinstance(saida, dict) else {}
 
 
 def _especialista(no: str) -> str:
@@ -119,8 +132,9 @@ def _referencia_proposta(escolha: dict[str, Any], texto_apresentado: str) -> str
 ETAPAS = {
     "explicar_opcoes": "explique a simulação, distinguindo capacidade de caixa e comparação com taxas ilustrativas. Não apresente isso como recomendação contratual.",
     "informar_deficit": "nenhuma opção cabe no caixa sem apertar os essenciais. Responda primeiro à pergunta do cliente, "
-                        "sem culpa e em até 3 linhas. Nunca diga que sobra dinheiro, que uma opção cabe ou que ele deve pagar algo; "
-                        "o sistema acrescenta a frase com o valor que falta.",
+                        "sem culpa. Se ele quiser pagar menos juros ou saber onde cortar, siga 'Quando falta dinheiro' "
+                        "(até 6 linhas); se não, até 3 linhas. Nunca diga que sobra dinheiro, que uma opção cabe ou que "
+                        "ele deve pagar algo; o sistema acrescenta a frase com o valor que falta.",
 }
 
 
@@ -181,7 +195,7 @@ def _recusar_resultado(estado: Estado, revisao: dict[str, Any], no: str, request
     mensagem = pergunta[0] if pergunta else "Os resultados precisam ser recalculados antes de comparar ou registrar uma escolha. Confirme os dados para continuarmos."
     return {**_revisado(estado, revisao, no), "request_id": estado["request_id"], "escolha": None, "comparacao": None,
             "etapa": "perguntar_cliente" if pergunta else "falha_revisao", "correcao": None,
-            "rascunho": "", "sugestoes": [], "ancora": None, "origem": None, "campo_da_abertura": None,
+            "rascunho": "", "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None, "origem": None, "campo_da_abertura": None,
             "messages": [AIMessage(mensagem)]}
 
 
@@ -214,6 +228,8 @@ PASSOS: dict[str, tuple[str, Any]] = {
                         else "reescrita pedida" if s.get("correcao") else "números conferidos"),
     "pedir_confirmacao": ("CONFIRMACAO", lambda s: f"pede confirmação: {s['escolha']['opcao']} de {texto.brl(s['escolha']['valor'])}"
                           if s.get("escolha") else "escolha não atende às restrições"),
+    "aceitar_plano": ("PLANO", lambda s: {"plano_aceito": "aceito, avisos ligados",
+                                         "plano_recusado": "recusado pelo cliente"}.get(s.get("etapa"), "aguardando aceite")),
     "registrar_decisao": ("DECISAO", lambda s: {"decisao_registrada": "intenção registrada, nada foi pago",
                                                "decisao_cancelada": "cancelada pelo cliente"}.get(s.get("etapa"), "ressalva: volta para a entrada")),
 }
@@ -270,6 +286,8 @@ def _resumo_saida(conteudo: Any) -> str:
         return "saida_invalida"
     if "erro" in dados:
         return "erro_tool"
+    if "proposta" in dados:  # montar_plano: o detalhe vem nas linhas [AGENTE][PLANEJADOR]
+        return "plano proposto" if dados["proposta"] else "sem plano que caiba"
     valores = _numeros_log(dados, ("custo_total", "valor_pago", "valor_estimado", "saldo_projetado_no_vencimento",
                                   "essenciais_ate_renda", "valor_fatura", "disponivel_para_fatura", "juros", "iof"))
     return ", ".join(f"{k}={v}" for k, v in list(valores.items())[:4]) or "ok"
@@ -287,6 +305,7 @@ def instrucao_do_turno(request: ModelRequest) -> str:
         .replace("{mudou}", "O cliente trouxe dado novo: a recomendação anterior não vale mais.\n" if estado.get("dados_mudaram") else "")
         .replace("{fatos}", json.dumps(estado.get("comparacao"), ensure_ascii=False))
         .replace("{correcao}", f"\nCORREÇÃO: {correcao}" if correcao else "")
+        + (f"\n{ACOLHER}" if estado.get("acolher") else "")
     )
 
 
@@ -306,11 +325,14 @@ def _texto_do_cliente(estado: Estado) -> str:
 
 def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras, checkpointer: Any = None, store: Any = None):
     """`modelo=None` é o modo simulado: a conversa usa o texto fixo com os números das tools."""
-    nomes_ferramentas = {ferramenta.name for ferramenta in FERRAMENTAS}
+    # O orquestrador faz as contas pelas tools e delega o plano ao planejador (subagente).
+    ferramentas = [*FERRAMENTAS, planejador.ferramenta(planejador.criar(modelo, store))] if modelo is not None else FERRAMENTAS
+    nomes_ferramentas = {ferramenta.name for ferramenta in ferramentas}
+    julgar = juiz.criar_juiz(modelo) if modelo is not None and juiz.ligado() else None
     agente = (
         create_agent(
             model=modelo,
-            tools=FERRAMENTAS,
+            tools=ferramentas,
             middleware=[instrucao_do_turno],
             state_schema=EstadoConversa,
             context_schema=Contexto,
@@ -324,7 +346,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
     def _trouxe_fato(mensagem: str) -> bool:
         """Uma negativa com dado novo ("não, minha reserva é 200") volta à entrada em vez de cancelar."""
         try:
-            return bool(extrator(mensagem).model_dump(exclude_defaults=True))
+            return bool(extrator(mensagem).model_dump(exclude_defaults=True, exclude={"risco"}))
         except (ValueError, TypeError):
             return True
 
@@ -339,7 +361,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                  "eventos": estado.get("eventos_entrada", []), "eventos_entrada": [],
                  "resultados_especialistas": {}, "resultados_tools": [],
                  "revisao": {}, "erro_calculo": None, "modo_resposta": "deterministico",
-                 "sugestoes": [], "ancora": None}
+                 "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None, "risco": None}
         turno["eventos"] = _evento({**estado, **turno}, "guardrail", "concluido")
         if parece_injecao(_texto_do_cliente(estado)):
             return {**turno, "eventos": _evento({**estado, **turno, "eventos": []}, "guardrail", "bloqueado"), "etapa": "bloqueado", "messages": [AIMessage(RESPOSTA_INJECAO)]}
@@ -378,8 +400,15 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente com o nome do campo?", campo_esclarecimento=campo if campo in {"valor_fatura", "saldo_atual", "reserva_desejada", "essenciais_informados", "proxima_renda", "despesas"} else None)
         except (ValueError, TypeError):
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente?")
+        if e.risco != "nenhum":
+            logs.evento(log, f"[AGENTE][GUARDRAIL] entrada={e.risco} → {'resposta fixa' if e.risco in BLOQUEIA else 'segue atendendo'}",
+                        logging.WARNING if e.risco in BLOQUEIA else logging.INFO, risco=e.risco)
+        if e.risco in BLOQUEIA:  # só o claro bloqueia; os fatos dessa fala não entram
+            return {"etapa": "bloqueado", "risco": e.risco, "campo_da_abertura": None,
+                    "messages": [AIMessage(texto.RESPOSTA_RISCO[e.risco])],
+                    "eventos": _evento(estado, "guardrail", "bloqueado", risco=e.risco)}
         atualizacao = {**atualizar_fatos(estado, e, runtime.context.carregar(), mensagem=_texto_do_cliente(estado)),
-                       "campo_da_abertura": None}
+                       "campo_da_abertura": None, "risco": None if e.risco == "nenhum" else e.risco}
         atual = {**estado, **atualizacao}
         resultado = _resultado(atual, "contexto_relacionamento", "atualizar_fatos",
                                {"dados": atual["dados"], "despesas": atual["despesas"]},
@@ -446,12 +475,14 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                 revisao = {"status": "bloqueado", "motivos": ["especialista_incompativel"], "stale": False}
         if revisao["status"] != "pode_apresentar":
             return _recusar_resultado(estado, revisao, "revisao_texto", request_id=runtime.context.request_id)
-        abertura = aberturas.abrir(origem, ctx, estado.get("comparacao"))
+        salvo = runtime.store.get(("planos", ctx.id_usuario), "ativo") if runtime.store is not None else None
+        abertura = aberturas.abrir(origem, ctx, estado.get("comparacao"), salvo.value if salvo else None)
         resultado = _resultado(estado, "contexto_relacionamento", "abertura", abertura)
         if resultado["status"] == "erro":
             revisao = {"status": "erro_tecnico", "motivos": ["resultado_nao_serializavel"], "stale": False}
             return _recusar_resultado(estado, revisao, "revisao_texto", request_id=runtime.context.request_id)
         return {"messages": [AIMessage(abertura["resposta"])], "sugestoes": abertura["sugestoes"], "ancora": abertura["ancora"],
+                "visuais": abertura.get("visuais", []),
                 "campo_da_abertura": abertura.get("campo_da_abertura"), "origem": None,
                 "etapa": estado["etapa"] if aberturas.precisa_calculo(origem) else "abertura",
                 "revisao": revisao,
@@ -481,6 +512,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                     "correcao": estado.get("correcao"),
                     "dados_confirmados": estado["dados"],
                     "despesas_confirmadas": despesas_confirmadas(estado),
+                    "acolher": estado.get("risco") in ("aflicao", "crise"),
                 },
                 context=runtime.context,
                 config={"metadata": {"request_id": estado["request_id"], "turno_id": estado["turno_id"],
@@ -508,8 +540,22 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             resultados_tools.append(resultado_tool)
             eventos = _evento({**estado, "eventos": eventos}, nome_tool, "erro" if falhou else "concluido",
                               tool=nome_tool, evidencias=resultado_tool["evidencias"])
-        evidencia_tools = {"resultados_tools": resultados_tools, "eventos": eventos}
+        propostas = [_saida_tool(m).get("proposta") for m in tools if m.name == "montar_plano"]
+        proposta = next((p for p in reversed(propostas) if p), None)
+        visuais_turno = [_saida_tool(m) for m in tools if m.name == "mostrar_visual" and "tipo" in _saida_tool(m)]
+        if estado.get("correcao"):  # reescrita: o plano e os visuais já montados neste turno continuam valendo
+            proposta = proposta or estado.get("plano_proposto")
+            visuais_turno = visuais_turno or list(estado.get("visuais") or [])
+        if proposta and not any(v["tipo"] == "caixa_ate_renda" for v in visuais_turno):
+            # Toda proposta mostra o caixa fechando com o plano, sem depender do modelo lembrar.
+            visuais_turno.append(plano.caixa_do_plano(ctx, estado["comparacao"], proposta))
+        evidencia_tools = {"resultados_tools": resultados_tools, "eventos": eventos, "plano_proposto": proposta,
+                           "visuais": visuais_turno}
         final = next((m.text for m in reversed(novas) if isinstance(m, AIMessage) and m.text), "")
+        if not final.strip():  # resposta vazia (ex.: filtro de segurança do Gemini): o cliente recebe os números em texto fixo
+            logs.evento(log, "[AGENTE][GEMINI] resposta vazia; usando a resposta fixa", logging.WARNING, etapa=estado["etapa"])
+            return {**evidencia_tools, "rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]),
+                    "correcao": None, "modo_resposta": "fallback", "eventos": _evento({**estado, "eventos": eventos}, "conversa", "resposta_vazia")}
         chamadas = {tc["id"]: tc for m in novas if isinstance(m, AIMessage) for tc in m.tool_calls}
         for m in tools:
             tc = chamadas.get(m.tool_call_id, {"name": m.name, "args": {}})
@@ -520,7 +566,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         logs.evento(log, f"[AGENTE][GEMINI] respondeu em {_seg(_ms(inicio))} com {len(tools)} tool{'s' if len(tools) != 1 else ''}"
                     + (" (reescrita)" if estado.get("correcao") else ""), etapa=estado["etapa"], ms=_ms(inicio))
         c = estado["comparacao"]
-        if c["status"] == "insuficiente":
+        if c["status"] == "insuficiente" and estado.get("risco") != "crise":  # na crise, primeiro o acolhimento
             # O modelo responde à pergunta; o valor que falta vem sempre da regra.
             if _FALA_EM_SOBRA.search(final):
                 return {**evidencia_tools, "rascunho": texto.resposta_padrao(ctx, c, estado["dados_mudaram"]), "correcao": None,
@@ -543,15 +589,35 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         revisao = _revisao_atual(estado, ctx, request_id=runtime.context.request_id)
         if revisao["status"] != "pode_apresentar":
             return _recusar_resultado(estado, revisao, "revisao_texto", request_id=runtime.context.request_id)
-        fontes = [json.dumps(estado["comparacao"]), json.dumps(ctx.resumo()), json.dumps(estado["dados"]), *estado["fontes"]]
+        fontes = [json.dumps(estado["comparacao"]), json.dumps(ctx.resumo()), json.dumps(estado["dados"]), *estado["fontes"],
+                  *([texto.AVISO_CRISE] if estado.get("risco") == "crise" else [])]  # o CVV (188) que o agente cita
         suspeitos = numeros_sem_fonte(estado["rascunho"], fontes)
-        if not suspeitos:
+        problemas = problemas_na_resposta(estado["rascunho"])
+        apontado = None
+        # Juiz só nos casos delicados (crise, golpe): raros, e onde uma resposta ruim pesa mais.
+        if (not suspeitos and not problemas and julgar is not None and estado["reescritas"] == 0
+                and estado.get("risco") in ("crise", "golpe")):
+            veredito = julgar(_texto_do_cliente(estado), estado["rascunho"])
+            logs.evento(log, f"[AGENTE][GUARDRAIL] juiz {'aprovou' if veredito.aprovada else 'reprovou'} ({estado.get('risco')})",
+                        logging.INFO if veredito.aprovada else logging.WARNING, aprovada=veredito.aprovada)
+            if not veredito.aprovada:
+                apontado = veredito.problema or "tom ou conteúdo inadequado para o cliente"
+        if not suspeitos and not problemas and not apontado:
             return {**_revisado(estado, revisao, "revisao_texto"), "messages": [AIMessage(_com_pendencias(estado["rascunho"], estado))], "numeros_sem_fonte": []}
         reescritas = estado["reescritas"] + 1
-        logs.evento(log, f"[AGENTE][VALIDACAO] {len(suspeitos)} números sem fonte (tentativa {reescritas})", logging.WARNING,
-                    tentativa=reescritas, quantidade_suspeitos=len(suspeitos))
+        if suspeitos:
+            logs.evento(log, f"[AGENTE][VALIDACAO] {len(suspeitos)} números sem fonte (tentativa {reescritas})", logging.WARNING,
+                        tentativa=reescritas, quantidade_suspeitos=len(suspeitos))
+        if problemas:
+            logs.evento(log, f"[AGENTE][GUARDRAIL] saída: {', '.join(problemas)} (tentativa {reescritas})", logging.WARNING,
+                        tentativa=reescritas, problemas=problemas)
         if reescritas <= MAX_REESCRITAS:
-            correcao = f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. Reescreva usando só os números do cálculo e das tools."
+            correcao = " ".join([
+                *([f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. "
+                   "Reescreva usando só os números do cálculo e das tools."] if suspeitos else []),
+                *(["Reescreva sua última resposta."] if (problemas or apontado) and not suspeitos else []),
+                *(CORRECOES[p] for p in problemas),
+                *([f"Um revisor apontou: {apontado}."] if apontado else [])])
             return {"reescritas": reescritas, "correcao": correcao}
         segura = texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"])
         return {"reescritas": reescritas, "messages": [AIMessage(_com_pendencias(segura, estado))], "numeros_sem_fonte": [],
@@ -636,6 +702,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return END if estado["etapa"] == "bloqueado" else "atualizar_estado"
 
     def dados_suficientes(estado: Estado, runtime: Runtime[Contexto]) -> str:
+        if estado["etapa"] == "bloqueado":
+            return END
         if _impeditivas(estado):
             return "perguntar_cliente"
         if estado.get("origem") and not aberturas.precisa_calculo(estado["origem"]):
@@ -654,21 +722,42 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return "registrar_decisao" if estado.get("escolha") else END
 
     def numeros_ok(estado: Estado) -> str:
-        return "conversa" if estado.get("correcao") else END
+        if estado.get("correcao"):
+            return "conversa"
+        return "aceitar_plano" if estado.get("plano_proposto") else END
+
+    def aceitar_plano(estado: Estado, runtime: Runtime[Contexto]) -> dict[str, Any]:
+        """O plano só vale com o aceite explícito do cliente; aí os avisos passam a acompanhá-lo."""
+        p = estado["plano_proposto"]
+        explicacao = estado["messages"][-1].text if isinstance(estado["messages"][-1], AIMessage) else ""
+        resposta = interrupt({"tipo": "plano", "pergunta": f"{explicacao}\n{texto.pergunta_plano(p)}".strip(),
+                              **{k: p[k] for k in ("pagamento_fatura", "reserva", "limite_diario", "fim")}})
+        resposta = resposta if isinstance(resposta, str) else ""
+        if not confirmou(resposta):
+            return {"plano_proposto": None, "visuais": [], "etapa": "plano_recusado",
+                    "messages": [HumanMessage(resposta), AIMessage(texto.PLANO_RECUSADO)]}
+        registro = {**{k: p[k] for k in ("pagamento_fatura", "reserva", "limite_diario", "inicio", "fim")},
+                    "aceito_em": datetime.now(UTC).isoformat(timespec="seconds")}
+        if runtime.store is not None:
+            runtime.store.put(("planos", runtime.context.carregar().id_usuario), "ativo", registro)
+        return {"plano_proposto": None, "visuais": [], "etapa": "plano_aceito",
+                "messages": [HumanMessage(resposta), AIMessage(texto.plano_aceito(registro))]}
 
     g = StateGraph(Estado, context_schema=Contexto)
-    for no in (guardrail, atualizar_estado, perguntar_cliente, calcular_opcoes, revisar_calculo, responder_origem, conversa, validar_numeros, pedir_confirmacao):
+    for no in (guardrail, atualizar_estado, perguntar_cliente, calcular_opcoes, revisar_calculo, responder_origem, conversa,
+               validar_numeros, pedir_confirmacao, aceitar_plano):
         g.add_node(no.__name__, _com_log(no))
     g.add_node("registrar_decisao", _com_log(registrar_decisao), destinations=("guardrail", END))
     g.add_edge(START, "guardrail")
     g.add_conditional_edges("guardrail", bloqueado, ["atualizar_estado", END])
-    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem"])
+    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem", END])
     g.add_edge("perguntar_cliente", END)
     g.add_edge("calcular_opcoes", "revisar_calculo")
     g.add_conditional_edges("revisar_calculo", escolheu, ["pedir_confirmacao", "responder_origem", "conversa", END])
     g.add_edge("responder_origem", END)
     g.add_edge("conversa", "validar_numeros")
-    g.add_conditional_edges("validar_numeros", numeros_ok, ["conversa", END])
+    g.add_conditional_edges("validar_numeros", numeros_ok, ["conversa", "aceitar_plano", END])
+    g.add_edge("aceitar_plano", END)
     g.add_conditional_edges("pedir_confirmacao", escolha_valida, ["registrar_decisao", END])
     return g.compile(checkpointer=checkpointer, store=store, name="agente_fatura")
 
@@ -694,10 +783,24 @@ class Turno:
     sugestoes: list[str]
     ancora: dict[str, Any] | None
     pergunta: str | None  # o que aparece como fala do cliente quando o chat abre por aviso ou valor ✦
+    visuais: list[dict[str, Any]] = field(default_factory=list)
     request_id: str = ""
     resultados_especialistas: dict[str, dict[str, Any]] = field(default_factory=dict)
     pendencias_impeditivas: list[str] = field(default_factory=list)
     pendencias_informativas: list[str] = field(default_factory=list)
+
+
+def entrada_segura(mensagem: str | None) -> tuple[str | None, bool]:
+    """Cartão, CPF e senha saem da fala antes do LLM, dos logs, do checkpoint e do LangSmith."""
+    mascarada, ocultou = mascarar(mensagem) if mensagem else (mensagem, False)
+    if ocultou:
+        logs.evento(log, "[AGENTE][GUARDRAIL] dado sensível ocultado da mensagem", logging.WARNING)
+    return mascarada, ocultou
+
+
+def resposta_segura(resposta: str, estado: dict[str, Any], retomada: bool, ocultou: bool) -> str:
+    """Avisos de segurança do turno. Retomar uma confirmação não passa pela entrada: o risco é de antes."""
+    return texto.com_avisos(resposta, None if retomada else estado.get("risco"), ocultou)
 
 
 def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | None = None,
@@ -718,6 +821,7 @@ def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | Non
 def _conversar_serializado(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | None,
                           origem: dict[str, str] | None, request_id: str) -> Turno:
     """Roda um turno. Se o grafo está parado pedindo confirmação, a mensagem retoma o interrupt."""
+    mensagem, ocultou = entrada_segura(mensagem)
     origem = origem or aberturas.origem_do_atalho(mensagem)
     pergunta = aberturas.pergunta(origem) if origem else None
     mensagem = pergunta or mensagem
@@ -741,6 +845,7 @@ def _conversar_serializado(grafo: Any, ctx: ContextoCliente, sessao: str, mensag
     interrupcoes = estado.get("__interrupt__") or []
     pedido = interrupcoes[0].value if interrupcoes else None
     resposta = pedido["pergunta"] if pedido else next(m.text for m in reversed(estado["messages"]) if isinstance(m, AIMessage))
+    resposta = resposta_segura(resposta, estado, retomada=bool(pendente), ocultou=ocultou)
     return Turno(
         resposta=resposta,
         etapa=estado.get("etapa", ""),
@@ -758,6 +863,7 @@ def _conversar_serializado(grafo: Any, ctx: ContextoCliente, sessao: str, mensag
         sugestoes=["Sim", "Não"] if pedido else (estado.get("sugestoes") or texto.SUGESTOES.get(estado.get("etapa", ""), [])),
         ancora=estado.get("ancora"),
         pergunta=pergunta,
+        visuais=list(estado.get("visuais") or []),
         request_id=estado.get("request_id", request_id),
         resultados_especialistas=estado.get("resultados_especialistas", {}),
         pendencias_impeditivas=_impeditivas(estado),

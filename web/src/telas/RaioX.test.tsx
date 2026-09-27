@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { Painel } from '../api';
+import type { Painel, Plano } from '../api';
 import { RaioX } from './RaioX';
 
 const painel = (raioX: Partial<Painel['raio_x']> = {}): Painel => ({
@@ -24,8 +24,17 @@ const painel = (raioX: Partial<Painel['raio_x']> = {}): Painel => ({
   },
 });
 
-const renderizar = (p: Painel) =>
-  render(<RaioX painel={p} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} />);
+const PLANO: Plano = {
+  pagamento_fatura: 920,
+  reserva: 150,
+  limite_diario: 90,
+  inicio: '2025-12-10',
+  fim: '2026-01-07',
+  progresso: { limite_diario: 90, dias_decorridos: 5, dias_totais: 28, gasto_real: 640, gasto_previsto: 450, status: 'acima' },
+};
+
+const renderizar = (p: Painel, plano: Plano | null = null) =>
+  render(<RaioX painel={p} plano={plano} aviso={undefined} aoAbrirAncora={() => {}} aoAbrirAviso={() => {}} />);
 
 describe('<RaioX>', () => {
   it('nomeia a fatura pelo mês do vencimento, não pelo mês de consumo', () => {
@@ -59,5 +68,23 @@ describe('<RaioX>', () => {
     expect(screen.getByText('Parcial ou mínimo em 3 de 4 faturas')).toBeTruthy();
     const legenda = [...container.querySelectorAll('.rx-legenda span')].map((s) => s.textContent);
     expect(legenda).toEqual(['Tudo 1', 'Uma parte 1', 'Só o mínimo 2']);
+  });
+
+  it('com plano aceito mostra o card "Seu plano" no topo', () => {
+    renderizar(painel(), PLANO);
+
+    expect(screen.getByText('Seu plano até 07/01')).toBeTruthy();
+    expect(screen.getByText('R$ 90')).toBeTruthy();
+    expect(screen.getByText('Dia 5 de 28')).toBeTruthy();
+    expect(screen.getByText('acima do plano')).toBeTruthy();
+    expect(screen.getByText('R$ 920')).toBeTruthy();
+    expect(screen.getByText('R$ 150')).toBeTruthy();
+  });
+
+  it('sem plano não mostra o card', () => {
+    renderizar(painel());
+
+    expect(screen.queryByText(/Seu plano/)).toBeNull();
+    expect(screen.queryByText(/do plano/)).toBeNull();
   });
 });

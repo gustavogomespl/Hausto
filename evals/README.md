@@ -1,6 +1,6 @@
 # Evals do agente de fatura
 
-30 roteiros multiturno (`roteiros.yaml`), cada um rodado com um cliente real da base escolhido
+40 roteiros multiturno (`roteiros.yaml`), cada um rodado com um cliente real da base escolhido
 pelo perfil (persona, caixa suficiente ou não, fatura estimável). Runner e painel: promptfoo.
 
 ## Rodar

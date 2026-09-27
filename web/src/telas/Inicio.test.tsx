@@ -28,7 +28,16 @@ const AVISO: Aviso = {
   cta: 'Ver com o Hausto',
 };
 
-const semAviso = { aviso: undefined, aoAbrirAviso: () => {}, aoDispensarAviso: () => {} };
+const PLANO: Aviso = {
+  id: 'plano',
+  tela: 'home',
+  rotulo: 'SEU PLANO',
+  titulo: 'Você saiu do plano',
+  texto: 'Nos últimos 5 dias foram R$ 640,00 no dia a dia; o plano previa R$ 450,00.',
+  cta: 'Ver o que fazer',
+};
+
+const semAviso = { avisos: [], aoAbrirAviso: () => {}, aoDispensarAviso: () => {} };
 
 describe('<Inicio>', () => {
   it('mostra "Fatura ainda não fechou" quando a fatura é nula', () => {
@@ -51,16 +60,16 @@ describe('<Inicio>', () => {
   it('"Agora não" dispensa e esconde o aviso', () => {
     const aoDispensar = vi.fn();
     function ComEstado() {
-      const [aviso, setAviso] = useState<Aviso | undefined>(AVISO);
+      const [avisos, setAvisos] = useState<Aviso[]>([AVISO]);
       return (
         <Inicio
           painel={PAINEL}
-          aviso={aviso}
+          avisos={avisos}
           aoAbrirAncora={() => {}}
           aoAbrirAviso={() => {}}
           aoDispensarAviso={(a) => {
             aoDispensar(a);
-            setAviso(undefined);
+            setAvisos((lista) => lista.filter((x) => x.id !== a.id));
           }}
         />
       );
@@ -72,5 +81,16 @@ describe('<Inicio>', () => {
 
     expect(aoDispensar).toHaveBeenCalledWith(AVISO);
     expect(screen.queryByText(AVISO.titulo)).toBeNull();
+  });
+
+  it('empilha todos os avisos da home, com o do plano primeiro', () => {
+    const aoAbrirAviso = vi.fn();
+    render(<Inicio painel={PAINEL} avisos={[AVISO, PLANO]} aoAbrirAncora={() => {}} aoAbrirAviso={aoAbrirAviso} aoDispensarAviso={() => {}} />);
+
+    const titulos = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(titulos).toEqual([PLANO.titulo, AVISO.titulo]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver o que fazer' }));
+    expect(aoAbrirAviso).toHaveBeenCalledWith(PLANO);
   });
 });

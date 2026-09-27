@@ -140,3 +140,56 @@
   padding: 14px 10px;
   color: var(--texto-2);
 }
+
+.admin-data {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-data-atual {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-data-atual span,
+.admin-data-atual small {
+  color: var(--texto-2);
+  font-size: 0.8rem;
+}
+
+.admin-data-atual strong {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-data-botoes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.admin-data-botoes button {
+  padding: 11px 6px;
+  border-radius: 14px;
+  background: var(--laranja-creme);
+  border: 1.5px solid var(--laranja-claro);
+  color: var(--laranja);
+  font-weight: 700;
+}
+
+.admin-data-voltar {
+  padding: 10px;
+  border-radius: 14px;
+  color: var(--texto-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-data button:disabled {
+  opacity: 0.45;
+}

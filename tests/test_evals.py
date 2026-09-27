@@ -26,10 +26,10 @@ class ModeloFalso(FakeMessagesListChatModel):
 # ------------------------------------------------------------------ roteiros
 
 
-def test_sao_30_roteiros_com_ids_unicos_e_turnos():
+def test_sao_40_roteiros_com_ids_unicos_e_turnos():
     roteiros = carregar_roteiros()
-    assert len(roteiros) == 30
-    assert len({r["id"] for r in roteiros}) == 30
+    assert len(roteiros) == 40
+    assert len({r["id"] for r in roteiros}) == 40
     assert all(r["turnos"] and all(t["mensagem"] for t in r["turnos"]) for r in roteiros)
 
 
@@ -37,7 +37,7 @@ def test_roteiros_cobrem_todas_as_categorias_do_design():
     cats = Counter(r["categoria"] for r in carregar_roteiros())
     assert cats == {
         "explicar_opcoes": 4, "hipotese_tool": 4, "dado_novo": 5, "insuficiencia": 3,
-        "fatura_desconhecida": 2, "escolha_confirmacao": 4, "guardrail": 2, "fora_escopo": 2,
+        "fatura_desconhecida": 2, "escolha_confirmacao": 4, "guardrail": 8, "falso_positivo": 4, "fora_escopo": 2,
         "outro_cliente": 1, "letramento": 2, "nova_despesa": 1,
     }
 
@@ -156,11 +156,11 @@ def _qualquer_cliente(monkeypatch):
     monkeypatch.setattr(gerar_testes, "escolher_cliente", lambda perfil, semente: ctx)
 
 
-def test_criar_testes_gera_30_casos_com_asserts(monkeypatch):
+def test_criar_testes_gera_40_casos_com_asserts(monkeypatch):
     _qualquer_cliente(monkeypatch)
     monkeypatch.setenv("EVALS_JUIZ", "1")
     testes = criar_testes()
-    assert len(testes) == 30
+    assert len(testes) == 40
     t = testes[0]
     assert t["vars"]["id_usuario"] and t["vars"]["roteiro"]
     tipos = [a["type"] for a in t["assert"]]

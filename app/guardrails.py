@@ -9,10 +9,17 @@ from typing import Any
 
 _INJECAO = re.compile(
     r"ignor[ea]\w* (as |todas as )?(suas |as )?(instru|regra)|"
-    r"voc[eê] agora [eé]|finja (ser|que)|aja como|prompt do sistema|system prompt|"
-    r"esque[cç]a (tudo|as instru)|developer mode|jailbreak",
+    r"voc[eê] agora [eé]|a partir de agora,? voc[eê]|finja (ser|que)|aja como|prompt do sistema|system prompt|"
+    r"(mostr|revel|repit)\w* (as |suas |o seu |seu )?(instru|regra|prompt)|"
+    r"dados? d[eo] (outro|outra) (cliente|pessoa|cpf|conta)|"
+    r"esque[cç]a (tudo|as instru)|developer mode|modo desenvolvedor|jailbreak",
     re.IGNORECASE,
 )
+# Dado sensível: mascarado antes do LLM, dos logs e do histórico. Cartão e CPF só com dígito verificador
+# válido, para não confundir valor, telefone ou data.
+_CARTAO = re.compile(r"(?<![\d.,])\d(?:[ .-]?\d){12,18}(?!\d|[.,]\d)")
+_CPF = re.compile(r"(?<![\d.,])\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?!\d|[.,]\d)")
+_SEGREDO = re.compile(r"\b(senha|cvv|cvc|c[oó]digo de seguran[cç]a|token|pin)\b(\W{0,3}(?:[ée]|era)?\W{0,3})((?=[^\s.,;!?]*\d)[^\s.,;!?]{3,20})", re.IGNORECASE)
 # pt-BR (2.173,51), ponto decimal cru do JSON (2173.51) ou inteiro/vírgula.
 # O sinal pode vir antes ou depois de R$: nunca transformar dívida em sobra.
 _NUMERO = re.compile(
@@ -31,6 +38,71 @@ RESPOSTA_INJECAO = (
 
 def parece_injecao(texto: str) -> bool:
     return bool(_INJECAO.search(unicodedata.normalize("NFKC", texto)))
+
+
+# Saída: o que o agente não pode dizer ao cliente. Frase negada ("não recomendo empréstimo") passa.
+_SAIDA = {
+    "produto": re.compile(r"\b(recomendo|sugiro|indico|contrat\w*|peg(?:ue|ar)|fa[çc]a|fazer|vale a pena)\b[^.\n]{0,40}?"
+                          r"\b(empr[eé]stimo|consignado|cr[eé]dito pessoal|investi\w*|cons[oó]rcio|seguro|previd[eê]ncia|cdb|tesouro)\b",
+                          re.IGNORECASE),
+    "promessa": re.compile(r"\b(garant(?:o|imos|id[oa]s?)|com certeza (?:vai|vão|será|terá)|sem (?:nenhum )?risco)\b|"
+                           r"cr[eé]dito[^.\n]{0,20}aprovad", re.IGNORECASE),
+    "segredo": re.compile(r"\b(inform\w*|pass\w*|envi\w*|digit\w*|diga|dizer|mand\w*|confirm\w*)\b[^.\n]{0,25}?"
+                          r"\b(senha|cvv|c[oó]digo de seguran[cç]a|token|n[uú]mero (?:completo )?do (?:seu )?cart[aã]o)\b",
+                          re.IGNORECASE),
+    # Nome de campo (custo_total) ou marcador do prompt na fala ao cliente.
+    "vazamento": re.compile(r"CÁLCULO DO TURNO|\{fatos\}|prompt do sistema|minhas instru[çc][õo]es|\b[a-z]+_[a-z_]+\b"),
+}
+CORRECOES = {
+    "produto": "Não recomende produtos financeiros (empréstimo, investimento, seguro).",
+    "promessa": "Não prometa resultado, aprovação ou ausência de risco.",
+    "segredo": "Nunca peça senha, código ou número do cartão.",
+    "vazamento": "Não mostre nomes internos do sistema; fale em português simples.",
+    "dado_sensivel": "Não repita dados sensíveis do cliente.",
+}
+
+
+def _negada(texto: str, inicio: int) -> bool:
+    return bool(re.search(r"\b(n[ãa]o|nunca|nem|jamais)\b[^.\n]{0,25}$", texto[max(0, inicio - 40):inicio], re.IGNORECASE))
+
+
+def problemas_na_resposta(texto: str) -> list[str]:
+    """Códigos do que a resposta não pode ter (chaves de CORRECOES), na ordem de CORRECOES."""
+    achados = {nome for nome, padrao in _SAIDA.items()
+               if any(not _negada(texto, m.start()) for m in padrao.finditer(texto))}
+    if mascarar(texto)[1]:
+        achados.add("dado_sensivel")
+    return [nome for nome in CORRECOES if nome in achados]
+
+
+def _luhn(digitos: str) -> bool:
+    soma = 0
+    for i, d in enumerate(reversed(digitos)):
+        n = int(d) * (2 if i % 2 else 1)
+        soma += n - 9 if n > 9 else n
+    return soma % 10 == 0
+
+
+def _cpf_valido(digitos: str) -> bool:
+    if len(set(digitos)) == 1:
+        return False
+    for tamanho in (9, 10):
+        soma = sum(int(d) * (tamanho + 1 - i) for i, d in enumerate(digitos[:tamanho]))
+        if (soma * 10 % 11) % 10 != int(digitos[tamanho]):
+            return False
+    return True
+
+
+def mascarar(texto: str) -> tuple[str, bool]:
+    """Troca número de cartão, CPF e senha/código por marcadores. Devolve o texto e se algo foi ocultado."""
+    def cartao(m: re.Match[str]) -> str:
+        return "[cartão ocultado]" if _luhn(re.sub(r"\D", "", m.group())) else m.group()
+
+    def cpf(m: re.Match[str]) -> str:
+        return "[CPF ocultado]" if _cpf_valido(re.sub(r"\D", "", m.group())) else m.group()
+
+    novo = _SEGREDO.sub(lambda m: f"{m.group(1)}{m.group(2)}[ocultado]", _CPF.sub(cpf, _CARTAO.sub(cartao, texto)))
+    return novo, novo != texto
 
 
 def _valores(obj: Any, saida: set[float]) -> None:

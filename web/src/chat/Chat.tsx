@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { conversar, ErroApi, type Origem } from '../api';
+import { conversar, ErroApi, type Origem, type Visual } from '../api';
 import { Brilho, Enviar, Expandir, Fechar, Recolher } from '../componentes/Icones';
 import { dinheiro } from '../formato';
 import { MensagemHausto, Pensando } from './Mensagem';
@@ -12,7 +12,7 @@ type Acao = { rotulo: string; origem?: Origem };
 type Mensagem =
   | { tipo: 'contexto'; rotulo: string; valor: number }
   | { tipo: 'cliente'; texto: string }
-  | { tipo: 'hausto'; texto: string; acoes: Acao[] }
+  | { tipo: 'hausto'; texto: string; acoes: Acao[]; visuais?: Visual[] }
   | { tipo: 'erro'; texto: string };
 
 const BOAS_VINDAS: Mensagem = {
@@ -26,12 +26,14 @@ const BOAS_VINDAS: Mensagem = {
 
 type Props = {
   idUsuario: string;
+  /** Data da simulação escolhida no admin; ausente = data padrão do cliente. */
+  dataRef?: string;
   aberto: boolean;
   pedido: PedidoAbertura | null;
   aoFechar: () => void;
 };
 
-export function Chat({ idUsuario, aberto, pedido, aoFechar }: Props) {
+export function Chat({ idUsuario, dataRef, aberto, pedido, aoFechar }: Props) {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [sessaoId, setSessaoId] = useState<string | undefined>();
   const [pensando, setPensando] = useState(false);
@@ -44,13 +46,18 @@ export function Chat({ idUsuario, aberto, pedido, aoFechar }: Props) {
     if (mensagem) setMensagens((m) => [...m, { tipo: 'cliente', texto: mensagem }]);
     setPensando(true);
     try {
-      const r = await conversar({ id_usuario: idUsuario, mensagem, origem, sessao_id: sessaoId });
+      const r = await conversar({ id_usuario: idUsuario, mensagem, origem, sessao_id: sessaoId, data_ref: dataRef });
       setSessaoId(r.sessao_id);
       const novas: Mensagem[] = [];
       if (r.ancora) novas.push({ tipo: 'contexto', ...r.ancora });
       // A pergunta só vira balão quando o turno foi aberto por origem; se o cliente escreveu, o balão já existe.
       if (r.pergunta && !mensagem) novas.push({ tipo: 'cliente', texto: r.pergunta });
-      novas.push({ tipo: 'hausto', texto: r.resposta, acoes: r.sugestoes.map((s) => ({ rotulo: s })) });
+      novas.push({
+        tipo: 'hausto',
+        texto: r.resposta,
+        acoes: r.sugestoes.map((s) => ({ rotulo: s })),
+        visuais: r.visuais ?? [],
+      });
       setMensagens((m) => [...m, ...novas]);
     } catch (e) {
       const texto =
@@ -131,7 +138,7 @@ export function Chat({ idUsuario, aberto, pedido, aoFechar }: Props) {
                   </div>
                 );
               case 'hausto':
-                return <MensagemHausto key={i} texto={m.texto} />;
+                return <MensagemHausto key={i} texto={m.texto} visuais={m.visuais} />;
               case 'erro':
                 return (
                   <div key={i} className="msg-erro" role="alert">

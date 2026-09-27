@@ -226,3 +226,36 @@
 .rx-legenda b {
   color: var(--texto);
 }
+
+.rx-plano .rx-destaque {
+  margin: 14px 0 16px;
+}
+
+.rx-plano-limite {
+  font-size: 1.7rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.rx-plano-combinado {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.rx-plano-combinado div {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--fundo);
+}
+
+.rx-plano-combinado dt {
+  font-size: 0.76rem;
+  color: var(--texto-2);
+}
+
+.rx-plano-combinado dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}

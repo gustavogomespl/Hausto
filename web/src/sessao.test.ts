@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { iniciaisDe, lerSessao, salvarSessao, type SessaoSalva } from './sessao';
+import { comDataRef, iniciaisDe, lerSessao, salvarSessao, type SessaoSalva } from './sessao';
 
 const CHAVE = 'hausto.cliente';
 const quebrado = () => {
@@ -29,6 +29,15 @@ describe('sessao', () => {
 
     expect(lerSessao()).toBeNull();
     expect(() => salvarSessao({ id_usuario: 'abc', persona: null })).not.toThrow();
+  });
+
+  it('guarda a data da simulação junto da sessão e a limpa com null', () => {
+    const sessao: SessaoSalva = { id_usuario: 'abc', persona: null };
+    salvarSessao(comDataRef(sessao, '2025-12-25'));
+    expect(lerSessao()).toEqual({ id_usuario: 'abc', persona: null, data_ref: '2025-12-25' });
+
+    salvarSessao(comDataRef(lerSessao()!, null));
+    expect(lerSessao()).toEqual(sessao);
   });
 
   it('usa as iniciais da persona ou as duas primeiras letras do id', () => {

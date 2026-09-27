@@ -14,6 +14,7 @@ const resposta = (extra: Partial<RespostaChat> = {}): RespostaChat => ({
   sugestoes: ['Quero ver', 'Agora não'],
   ancora: { rotulo: 'Fatura aberta', valor: 1980 },
   pergunta: 'Por que esse valor?',
+  visuais: [],
   ...extra,
 });
 
@@ -93,6 +94,53 @@ describe('<Chat>', () => {
 
     expect(await screen.findByRole('button', { name: 'Quero ver' })).toBeTruthy();
     expect(corpoDa(fetchMock, 0)).toEqual({ id_usuario: 'u-1', origem: { tipo: 'ancora', campo } });
+  });
+
+  it('mostra o card do visual abaixo do texto do Hausto e acima das sugestões', async () => {
+    mockFetch(
+      resposta({
+        visuais: [
+          {
+            tipo: 'linha_do_tempo',
+            titulo: 'Seu caixa até o salário',
+            resumo: 'A fatura vence antes do salário cair.',
+            dados: {
+              eventos: [
+                { data: '2025-12-25', rotulo: 'Vence a fatura', valor: 1980, tipo: 'fatura' },
+                { data: '2025-12-10', rotulo: 'Hoje', valor: null, tipo: 'hoje' },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const { container } = render(
+      <Chat idUsuario="u-1" aberto pedido={{ id: 1, origem: { tipo: 'ancora', campo: 'fatura' } }} aoFechar={() => {}} />,
+    );
+
+    const card = await screen.findByRole('figure', { name: 'Seu caixa até o salário' });
+    const mensagem = container.querySelector('.msg-hausto')!;
+    expect(mensagem.contains(card)).toBe(true);
+    const segue = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(segue(screen.getByText('R$ 1.980'), card)).toBe(true);
+    expect(segue(card, screen.getByRole('button', { name: 'Quero ver' }))).toBe(true);
+    expect(card.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('A fatura vence antes do salário cair.')).toBeTruthy();
+  });
+
+  it('sem visuais a mensagem do Hausto fica só com o texto (inclusive se o campo não vier)', async () => {
+    const semCampo: Partial<RespostaChat> = resposta({ resposta: 'Segunda resposta.', sugestoes: ['Ok'] });
+    delete semCampo.visuais;
+    mockFetch(resposta(), semCampo as RespostaChat);
+    const { container } = render(
+      <Chat idUsuario="u-1" aberto pedido={{ id: 1, origem: { tipo: 'ancora', campo: 'fatura' } }} aoFechar={() => {}} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Quero ver' }));
+
+    expect(await screen.findByRole('button', { name: 'Ok' })).toBeTruthy();
+    expect(container.querySelectorAll('.msg-hausto')).toHaveLength(2);
+    expect(container.querySelector('.visual')).toBeNull();
   });
 
   it('mostra erro claro quando a API falha', async () => {

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
 from app.features import ContextoCliente
+from app.guardrails import RESPOSTA_INJECAO
 
 ROTULOS = {"integral": "pagar a fatura inteira", "parcial": "pagar parte", "minimo": "pagar o mínimo"}
 
@@ -43,16 +45,45 @@ def linhas_opcoes(c: dict[str, Any]) -> list[str]:
     op = c["opcoes"]
     linhas = []
     for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"), ("minimo", "Pagar o mínimo")):
-        if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
-            continue  # o caixa cobre tudo: o parcial é o próprio integral
+        if nome == "parcial_viavel" and op[nome]["valor_pago"] in (c["valor_fatura"], op["minimo"]["valor_pago"]):
+            continue  # o parcial é o próprio integral (o caixa cobre tudo) ou o próprio mínimo (sem folga)
         ok = "cabe no seu caixa" if op[nome]["atende_restricoes"] else "aperta os essenciais"
         linhas.append(f"- {rotulo}: custo de {brl(op[nome]['custo_total'])} ({ok}).")
     return linhas
 
 
+# Guardrails: só o claro bloqueia (resposta fixa); aflição, crise e golpe seguem atendendo com um aviso.
+RESPOSTA_RISCO = {
+    "injecao": RESPOSTA_INJECAO,
+    "ofensa_sem_pedido": "Entendo que essa situação irrita. Estou aqui para te ajudar com a sua fatura e o seu saldo. "
+                         "Quer ver quanto vai ser a sua próxima fatura?",
+    "fora_do_escopo": "Nisso eu não consigo ajudar. Aqui eu cuido da sua fatura, do seu saldo e de um plano até a "
+                      "próxima renda. Quer ver as opções da sua fatura?",
+}
+AVISO_DADO_SENSIVEL = ("Por segurança, apaguei da conversa o dado sensível que você mandou. Não precisa me passar "
+                       "senha, código ou número do cartão.")
+AVISO_CRISE = ("Sinto muito que você esteja passando por isso. Você não precisa enfrentar sozinho: o CVV atende "
+               "de graça, 24 horas, pelo telefone 188 ou em cvv.org.br.")
+AVISO_GOLPE = ("Atenção: o banco nunca pede senha, código ou transferência por telefone ou mensagem. Na dúvida, "
+               "desligue e ligue para o número que está no seu cartão.")
+
+
+# O aviso fixo garante a informação; se o agente já a deu com as palavras dele, não repete.
+_JA_AVISOU = {"crise": re.compile(r"\b188\b|\bcvv\b", re.IGNORECASE), "golpe": re.compile(r"nunca pede", re.IGNORECASE)}
+
+
+def com_avisos(resposta: str, risco: str | None, dado_ocultado: bool) -> str:
+    """Avisos de segurança antes da resposta, sem trocar o atendimento."""
+    risco = risco if risco in _JA_AVISOU and not _JA_AVISOU[risco].search(resposta) else None
+    avisos = [AVISO_DADO_SENSIVEL if dado_ocultado else None,
+              {"crise": AVISO_CRISE, "golpe": AVISO_GOLPE}.get(risco or "")]
+    return "\n".join([*(a for a in avisos if a), resposta])
+
+
 SUGESTOES = {
+    "bloqueado": ["Minha fatura", "Conferir meu saldo"],
     "explicar_opcoes": ["Quero pagar tudo", "E se eu pagar o mínimo?", "Aconteceu um imprevisto"],
-    "informar_deficit": ["Conferir meu saldo", "Rever a reserva", "Aconteceu um imprevisto"],
+    "informar_deficit": ["Como pagar menos juros?", "Onde dá para cortar?", "Conferir meu saldo", "Aconteceu um imprevisto"],
     "escolha_incompativel": ["Conferir meu saldo", "Rever a reserva"],
     "decisao_registrada": ["Minha fatura"],
     "decisao_cancelada": ["Minha fatura", "Aconteceu um imprevisto"],
@@ -109,5 +140,20 @@ def decisao_registrada(escolha: dict[str, Any]) -> str:
         "Registrei apenas sua intenção na simulação. Nenhum pagamento foi feito. Confira as condições reais antes de decidir."
     )
 
+
+def pergunta_plano(p: dict[str, Any]) -> str:
+    fim = date.fromisoformat(p["fim"]).strftime("%d/%m")
+    reserva = f", guardar {brl(p['reserva'])}" if p.get("reserva") else ""
+    return (f"Aceita este plano até {fim}? Pagar {brl(p['pagamento_fatura'])} da fatura{reserva} e gastar até "
+            f"{brl(p['limite_diario'])} por dia no dia a dia. Se aceitar, eu te aviso quando os gastos passarem do combinado. (sim/não)")
+
+
+def plano_aceito(p: dict[str, Any]) -> str:
+    fim = date.fromisoformat(p["fim"]).strftime("%d/%m")
+    return (f"Plano ativo até {fim}. Vou acompanhar seus gastos do dia a dia e te aviso se passarem de "
+            f"{brl(p['limite_diario'])} por dia. Nada foi pago: o pagamento da fatura continua com você.")
+
+
+PLANO_RECUSADO = "Tudo bem, não ativei o plano. Quer ajustar algum valor?"
 
 DECISAO_CANCELADA = "Tudo bem, não registrei nada. Quer rever as opções ou mudar algum valor?"

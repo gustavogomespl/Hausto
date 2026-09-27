@@ -17,6 +17,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from app.agente import Contexto, construir_grafo, texto
+from app.agente.grafo import entrada_segura, resposta_segura
 from app.agente.modelos import extrator as extrator_do_modelo
 from app.agente.modelos import modelo_chat
 from app.features import ContextoCliente
@@ -112,7 +113,9 @@ class AlvoGrafo:
     def _turno(self, grafo: Any, config: dict, contexto: Contexto, mensagem: str) -> TurnoTrace:
         t = TurnoTrace(mensagem=mensagem)
         inicio = time.perf_counter()
-        entrada = Command(resume=mensagem) if grafo.get_state(config).interrupts else {"messages": [HumanMessage(mensagem)]}
+        mensagem, ocultou = entrada_segura(mensagem)  # os mesmos guardrails de entrada da API
+        retomada = bool(grafo.get_state(config).interrupts)
+        entrada = Command(resume=mensagem) if retomada else {"messages": [HumanMessage(mensagem)]}
         chamadas: dict[str, dict[str, Any]] = {}
         interrupcao = None
         try:
@@ -154,6 +157,7 @@ class AlvoGrafo:
             t.resposta = interrupcao["pergunta"]
         elif not t.erro:  # com erro, a última AIMessage seria a do turno anterior
             t.resposta = next((m.text for m in reversed(estado.get("messages", [])) if isinstance(m, AIMessage)), "")
+        t.resposta = resposta_segura(t.resposta, estado, retomada=retomada, ocultou=ocultou) if t.resposta else t.resposta
         return t
 
 

@@ -103,7 +103,10 @@ AVISO_IMPREVISTO = {
 }
 
 
-def avisos(ctx: ContextoCliente) -> list[dict[str, Any]]:
+def avisos(ctx: ContextoCliente, plano_ativo: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Avisos da Home e do Raio-X; o desvio do plano aceito vem primeiro."""
+    from app import plano  # import tardio: app.plano também usa app.agente.texto
+
     c = calculos.comparar_opcoes(ctx)
     lista = []
     dias = (ctx.proximo_vencimento - ctx.data_ref).days
@@ -118,5 +121,12 @@ def avisos(ctx: ContextoCliente) -> list[dict[str, Any]]:
             "id": "sem_folga", "tela": "home", "rotulo": "HAUSTO", "cta": "Ver o que dá pra fazer",
             "titulo": "Este mês o caixa não fecha",
             "texto": f"Até a próxima renda, faltam {texto.brl(c['deficit_para_o_minimo'])} para pagar o mínimo sem apertar o essencial.",
+        })
+    if plano_ativo and (prog := plano.progresso(plano_ativo, ctx))["status"] == "acima":
+        lista.insert(0, {
+            "id": "plano", "tela": "home", "rotulo": "SEU PLANO", "cta": "Ver o que fazer",
+            "titulo": "Você saiu do plano",
+            "texto": f"Nos últimos {prog['dias_decorridos']} dias foram {texto.brl(prog['gasto_real'])} no dia a dia; "
+                     f"o plano previa {texto.brl(prog['gasto_previsto'])}.",
         })
     return [*lista, AVISO_IMPREVISTO]

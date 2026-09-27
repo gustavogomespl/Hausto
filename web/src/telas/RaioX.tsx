@@ -1,19 +1,21 @@
-import type { Aviso, CampoAncora, Painel } from '../api';
+import type { Aviso, CampoAncora, Painel, Plano } from '../api';
 import { iconeDaCategoria } from '../categorias';
 import { CardAviso } from '../componentes/CardAviso';
 import { Seta } from '../componentes/Icones';
 import { Valor } from '../componentes/Valor';
-import { dinheiroCurto, inicialDoMes, nomeDoMes } from '../formato';
+import { ProgressoPlano } from '../chat/visuais/ProgressoPlano';
+import { diaMesNumerico, dinheiroCurto, inicialDoMes, nomeDoMes } from '../formato';
 import './RaioX.css';
 
 type Props = {
   painel: Painel;
+  plano: Plano | null;
   aviso: Aviso | undefined;
   aoAbrirAncora: (campo: CampoAncora) => void;
   aoAbrirAviso: (aviso: Aviso) => void;
 };
 
-export function RaioX({ painel, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
+export function RaioX({ painel, plano, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
   const { raio_x: rx, cartao } = painel;
   // A fatura leva o nome do mês em que vence (vence 25/12 -> fatura de dezembro).
   const mesFatura = nomeDoMes(cartao.vencimento);
@@ -24,6 +26,8 @@ export function RaioX({ painel, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
         <h1 className="pagina-titulo">Raio-X</h1>
         {mesFatura && <span>Fatura de {mesFatura}</span>}
       </div>
+
+      {plano && <SeuPlano plano={plano} />}
 
       {aviso && <CardAviso aviso={aviso} aoAbrir={aoAbrirAviso} />}
 
@@ -123,6 +127,30 @@ export function RaioX({ painel, aviso, aoAbrirAncora, aoAbrirAviso }: Props) {
 
       {rx.faturas.length > 0 && <Faturas faturas={rx.faturas} />}
     </div>
+  );
+}
+
+/** O plano que o cliente aceitou no chat, acompanhado dia a dia até a próxima renda. */
+function SeuPlano({ plano }: { plano: Plano }) {
+  return (
+    <section className="card rx-plano">
+      <Cabeca titulo={`Seu plano até ${diaMesNumerico(plano.fim)}`} sub="Combinado com o Hausto" />
+      <div className="rx-destaque">
+        <strong className="rx-plano-limite">{dinheiroCurto(plano.limite_diario)}</strong>
+        <span>por dia no dia a dia</span>
+      </div>
+      <ProgressoPlano dados={plano.progresso} compacto />
+      <dl className="rx-plano-combinado">
+        <div>
+          <dt>Pagar da fatura</dt>
+          <dd>{dinheiroCurto(plano.pagamento_fatura)}</dd>
+        </div>
+        <div>
+          <dt>Guardar de reserva</dt>
+          <dd>{dinheiroCurto(plano.reserva)}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 

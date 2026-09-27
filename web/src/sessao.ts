@@ -1,7 +1,10 @@
 import type { Persona } from './api';
 
-/** Cliente escolhido no onboarding/admin, lembrado entre visitas. */
-export type SessaoSalva = { id_usuario: string; persona: Persona | null };
+/**
+ * Cliente escolhido no onboarding/admin, lembrado entre visitas.
+ * `data_ref` é a "data da simulação" escolhida no admin (o "hoje" do app); ausente = data padrão do cliente.
+ */
+export type SessaoSalva = { id_usuario: string; persona: Persona | null; data_ref?: string };
 
 const CHAVE = 'hausto.cliente';
 
@@ -21,6 +24,11 @@ export function salvarSessao(sessao: SessaoSalva) {
   } catch {
     /* sem storage (aba anônima, bloqueio): segue só em memória */
   }
+}
+
+/** Mesma sessão com outra data da simulação; `null` volta à data original do cliente. */
+export function comDataRef({ id_usuario, persona }: SessaoSalva, data: string | null): SessaoSalva {
+  return data ? { id_usuario, persona, data_ref: data } : { id_usuario, persona };
 }
 
 export function iniciaisDe(sessao: SessaoSalva) {

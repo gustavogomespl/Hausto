@@ -1,13 +1,16 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { listarClientes, listarPersonas, mensagemDeErro, type ClienteResumo, type Persona } from '../api';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { buscarPainel, listarClientes, listarPersonas, mensagemDeErro, type ClienteResumo, type Persona } from '../api';
 import { Carregando, Falha } from '../componentes/Estados';
 import { Voltar } from '../componentes/Icones';
+import { dataCompleta, somarDias } from '../formato';
 import type { SessaoSalva } from '../sessao';
 import './Admin.css';
 
 type Props = {
   atual: SessaoSalva | null;
   aoEscolher: (sessao: SessaoSalva) => void;
+  /** Muda o "hoje" do app; `null` volta à data original do cliente. */
+  aoMudarData?: (data: string | null) => void;
   aoVoltar?: () => void;
 };
 
@@ -27,7 +30,7 @@ function useCarga<T>(buscar: () => Promise<T>): Carga<T> {
   return estado;
 }
 
-export function Admin({ atual, aoEscolher, aoVoltar }: Props) {
+export function Admin({ atual, aoEscolher, aoMudarData, aoVoltar }: Props) {
   const personas = useCarga(listarPersonas);
   const clientes = useCarga(listarClientes);
   const [idDigitado, setIdDigitado] = useState('');
@@ -58,6 +61,8 @@ export function Admin({ atual, aoEscolher, aoVoltar }: Props) {
       </header>
 
       <div className="pagina">
+        {atual && aoMudarData && <DataDaSimulacao sessao={atual} aoMudar={aoMudarData} />}
+
         <h2 className="secao-titulo">Personas</h2>
         {personas.erro && <Falha mensagem={personas.erro} />}
         {!personas.erro && !personas.dados && <Carregando />}
@@ -120,6 +125,44 @@ export function Admin({ atual, aoEscolher, aoVoltar }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+const AVANCOS = [1, 3, 7];
+
+/** O "hoje" do app na demo: avançar alguns dias faz os gastos seguintes do cliente moverem o plano. */
+function DataDaSimulacao({ sessao, aoMudar }: { sessao: SessaoSalva; aoMudar: (data: string | null) => void }) {
+  // Sem data_ref, o painel responde com a data original do cliente.
+  const buscar = useCallback(() => buscarPainel(sessao.id_usuario), [sessao.id_usuario]);
+  const painel = useCarga(buscar);
+  const original = painel.dados?.data_ref;
+  const hoje = sessao.data_ref ?? original;
+
+  let nota = 'Data original do cliente';
+  if (sessao.data_ref) nota = original ? `Data original: ${dataCompleta(original)}` : 'Data avançada';
+  else if (painel.erro) nota = 'Não consegui ler a data do cliente.';
+
+  return (
+    <>
+      <h2 className="secao-titulo">Data da simulação</h2>
+      <section className="card admin-data">
+        <div className="admin-data-atual">
+          <span>Hoje no app</span>
+          <strong>{hoje ? dataCompleta(hoje) : '…'}</strong>
+          <small>{nota}</small>
+        </div>
+        <div className="admin-data-botoes">
+          {AVANCOS.map((dias) => (
+            <button key={dias} type="button" disabled={!hoje} onClick={() => hoje && aoMudar(somarDias(hoje, dias))}>
+              +{dias} {dias === 1 ? 'dia' : 'dias'}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="admin-data-voltar" disabled={!sessao.data_ref} onClick={() => aoMudar(null)}>
+          Voltar à data original
+        </button>
+      </section>
+    </>
   );
 }
 
