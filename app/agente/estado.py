@@ -72,6 +72,7 @@ class Estado(MessagesState):
     sugestoes: list[str]
     visuais: list[dict[str, Any]]  # gráficos do turno, montados pelo código (app.visuais)
     plano_proposto: dict[str, Any] | None  # plano que cabe e espera o aceite do cliente
+    risco: str | None  # classificação da fala do cliente pelos guardrails de entrada
     ancora: dict[str, Any] | None
 
 
@@ -84,3 +85,4 @@ class EstadoConversa(AgentState):
     correcao: NotRequired[str | None]
     dados_confirmados: NotRequired[dict[str, Any]]
     despesas_confirmadas: NotRequired[list[dict[str, Any]]]
+    acolher: NotRequired[bool]

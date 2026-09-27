@@ -29,3 +29,10 @@ def test_thinking_vazio_volta_ao_padrao_do_modelo(gemini, monkeypatch):
 def test_modo_simulado_nao_cria_modelo(monkeypatch):
     monkeypatch.setenv("MODO_LLM", "simulado")
     assert modelo_chat() is None
+
+
+def test_filtro_de_seguranca_do_gemini_so_no_nivel_alto(gemini):
+    from langchain_google_genai import HarmBlockThreshold, HarmCategory
+    filtros = modelo_chat().safety_settings
+    assert filtros[HarmCategory.HARM_CATEGORY_HARASSMENT] == HarmBlockThreshold.BLOCK_ONLY_HIGH
+    assert set(filtros.values()) == {HarmBlockThreshold.BLOCK_ONLY_HIGH} and len(filtros) == 4

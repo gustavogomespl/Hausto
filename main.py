@@ -31,6 +31,7 @@ from app.agente.grafo import ConflitoSessao
 from app.agente.modelos import extrator, modelo_chat, modo_llm
 from app.dados import repositorio
 from app.features import ContextoCliente, montar_contexto
+from app.guardrails import mascarar
 
 logs.configurar()
 log = logging.getLogger("agente")
@@ -274,7 +275,9 @@ def chat(pedido: PedidoChat, request: Request = None) -> RespostaChat:
             raise HTTPException(409, str(erro)) from erro
         ms = round((time.perf_counter() - inicio) * 1000)
         # Só a fala pública entra com opt-in; contexto, prompts e tools ficam fora.
-        conteudo = {"mensagem": pedido.mensagem, "resposta": turno.resposta} if os.getenv("LOG_CONTEUDO") == "1" else {}
+        # Mesmo com conteúdo ligado, o log leva a fala já mascarada (cartão, CPF, senha).
+        conteudo = ({"mensagem": mascarar(pedido.mensagem)[0] if pedido.mensagem else None, "resposta": turno.resposta}
+                    if os.getenv("LOG_CONTEUDO") == "1" else {})
         logs.evento(log, f"[API][TURNO] {turno.etapa} · resposta {turno.modo_resposta} · {ms} ms", etapa=turno.etapa,
                     modo_resposta=turno.modo_resposta, origem=origem, tools=turno.tools, reescritas=turno.reescritas,
                     versao_contexto=turno.versao_contexto, turno_id=turno.turno_id, ms=ms, **correlacao, **conteudo)

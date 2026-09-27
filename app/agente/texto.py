@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 from app.features import ContextoCliente
+from app.guardrails import RESPOSTA_INJECAO
 
 ROTULOS = {"integral": "pagar a fatura inteira", "parcial": "pagar parte", "minimo": "pagar o mínimo"}
 
@@ -51,7 +52,36 @@ def linhas_opcoes(c: dict[str, Any]) -> list[str]:
     return linhas
 
 
+# Guardrails: só o claro bloqueia (resposta fixa); aflição, crise e golpe seguem atendendo com um aviso.
+RESPOSTA_RISCO = {
+    "injecao": RESPOSTA_INJECAO,
+    "ofensa_sem_pedido": "Entendo que essa situação irrita. Estou aqui para te ajudar com a sua fatura e o seu saldo. "
+                         "Quer ver quanto vai ser a sua próxima fatura?",
+    "fora_do_escopo": "Nisso eu não consigo ajudar. Aqui eu cuido da sua fatura, do seu saldo e de um plano até a "
+                      "próxima renda. Quer ver as opções da sua fatura?",
+}
+AVISO_DADO_SENSIVEL = ("Por segurança, apaguei da conversa o dado sensível que você mandou. Não precisa me passar "
+                       "senha, código ou número do cartão.")
+AVISO_CRISE = ("Sinto muito que você esteja passando por isso. Você não precisa enfrentar sozinho: o CVV atende "
+               "de graça, 24 horas, pelo telefone 188 ou em cvv.org.br.")
+AVISO_GOLPE = ("Atenção: o banco nunca pede senha, código ou transferência por telefone ou mensagem. Na dúvida, "
+               "desligue e ligue para o número que está no seu cartão.")
+
+
+# O aviso fixo garante a informação; se o agente já a deu com as palavras dele, não repete.
+_JA_AVISOU = {"crise": re.compile(r"\b188\b|\bcvv\b", re.IGNORECASE), "golpe": re.compile(r"nunca pede", re.IGNORECASE)}
+
+
+def com_avisos(resposta: str, risco: str | None, dado_ocultado: bool) -> str:
+    """Avisos de segurança antes da resposta, sem trocar o atendimento."""
+    risco = risco if risco in _JA_AVISOU and not _JA_AVISOU[risco].search(resposta) else None
+    avisos = [AVISO_DADO_SENSIVEL if dado_ocultado else None,
+              {"crise": AVISO_CRISE, "golpe": AVISO_GOLPE}.get(risco or "")]
+    return "\n".join([*(a for a in avisos if a), resposta])
+
+
 SUGESTOES = {
+    "bloqueado": ["Minha fatura", "Conferir meu saldo"],
     "explicar_opcoes": ["Quero pagar tudo", "E se eu pagar o mínimo?", "Aconteceu um imprevisto"],
     "informar_deficit": ["Como pagar menos juros?", "Onde dá para cortar?", "Conferir meu saldo", "Aconteceu um imprevisto"],
     "escolha_incompativel": ["Conferir meu saldo", "Rever a reserva"],

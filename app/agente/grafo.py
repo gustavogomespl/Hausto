@@ -35,7 +35,7 @@ from langgraph.types import Command, interrupt
 from pydantic import ValidationError
 
 from app import calculos, logs, plano
-from app.agente import aberturas, planejador, texto
+from app.agente import aberturas, juiz, planejador, texto
 from app.agente.contexto import atualizar_fatos, despesas_confirmadas, pode_contextualizar_despesa, referencia
 from app.agente.contexto_financeiro import comparar_contexto
 from app.agente.contratos import ResultadoEspecialista, referencia_resultado
@@ -44,7 +44,7 @@ from app.agente.extracao import Extracao, Extrator, confirmou, extrair_por_regra
 from app.agente.ferramentas import FERRAMENTAS
 from app.agente.revisao import revisar_comparacao, revisar_evidencias
 from app.features import ContextoCliente
-from app.guardrails import RESPOSTA_INJECAO, numeros_sem_fonte, parece_injecao
+from app.guardrails import CORRECOES, RESPOSTA_INJECAO, mascarar, numeros_sem_fonte, parece_injecao, problemas_na_resposta
 
 log = logging.getLogger("agente")
 
@@ -64,6 +64,10 @@ if not any(f.name == "erro_extracao_sem_conteudo" for f in log.filters):
     log.addFilter(_ErroExtracaoSemConteudo("erro_extracao_sem_conteudo"))
 
 PROMPT = (Path(__file__).parent / "prompt.md").read_text(encoding="utf-8")
+# Aflição não bloqueia: o turno segue, com o tom ajustado.
+ACOLHER = ("O cliente parece aflito: comece com uma frase curta de acolhimento, sem culpa, e siga ajudando. "
+           "Não diga para ficar tranquilo nem que vai dar tudo certo.")
+BLOQUEIA = frozenset({"injecao", "ofensa_sem_pedido", "fora_do_escopo"})
 MAX_REESCRITAS = 1  # depois disso, a resposta segura (só números das tools) substitui a do modelo
 
 # Papéis lógicos no mesmo StateGraph; nenhum motor/agente financeiro novo.
@@ -301,6 +305,7 @@ def instrucao_do_turno(request: ModelRequest) -> str:
         .replace("{mudou}", "O cliente trouxe dado novo: a recomendação anterior não vale mais.\n" if estado.get("dados_mudaram") else "")
         .replace("{fatos}", json.dumps(estado.get("comparacao"), ensure_ascii=False))
         .replace("{correcao}", f"\nCORREÇÃO: {correcao}" if correcao else "")
+        + (f"\n{ACOLHER}" if estado.get("acolher") else "")
     )
 
 
@@ -323,6 +328,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
     # O orquestrador faz as contas pelas tools e delega o plano ao planejador (subagente).
     ferramentas = [*FERRAMENTAS, planejador.ferramenta(planejador.criar(modelo, store))] if modelo is not None else FERRAMENTAS
     nomes_ferramentas = {ferramenta.name for ferramenta in ferramentas}
+    julgar = juiz.criar_juiz(modelo) if modelo is not None and juiz.ligado() else None
     agente = (
         create_agent(
             model=modelo,
@@ -340,7 +346,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
     def _trouxe_fato(mensagem: str) -> bool:
         """Uma negativa com dado novo ("não, minha reserva é 200") volta à entrada em vez de cancelar."""
         try:
-            return bool(extrator(mensagem).model_dump(exclude_defaults=True))
+            return bool(extrator(mensagem).model_dump(exclude_defaults=True, exclude={"risco"}))
         except (ValueError, TypeError):
             return True
 
@@ -355,7 +361,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                  "eventos": estado.get("eventos_entrada", []), "eventos_entrada": [],
                  "resultados_especialistas": {}, "resultados_tools": [],
                  "revisao": {}, "erro_calculo": None, "modo_resposta": "deterministico",
-                 "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None}
+                 "sugestoes": [], "visuais": [], "plano_proposto": None, "ancora": None, "risco": None}
         turno["eventos"] = _evento({**estado, **turno}, "guardrail", "concluido")
         if parece_injecao(_texto_do_cliente(estado)):
             return {**turno, "eventos": _evento({**estado, **turno, "eventos": []}, "guardrail", "bloqueado"), "etapa": "bloqueado", "messages": [AIMessage(RESPOSTA_INJECAO)]}
@@ -394,8 +400,15 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente com o nome do campo?", campo_esclarecimento=campo if campo in {"valor_fatura", "saldo_atual", "reserva_desejada", "essenciais_informados", "proxima_renda", "despesas"} else None)
         except (ValueError, TypeError):
             e = Extracao(esclarecimento="Não consegui interpretar esse valor ou data. Pode informar novamente?")
+        if e.risco != "nenhum":
+            logs.evento(log, f"[AGENTE][GUARDRAIL] entrada={e.risco} → {'resposta fixa' if e.risco in BLOQUEIA else 'segue atendendo'}",
+                        logging.WARNING if e.risco in BLOQUEIA else logging.INFO, risco=e.risco)
+        if e.risco in BLOQUEIA:  # só o claro bloqueia; os fatos dessa fala não entram
+            return {"etapa": "bloqueado", "risco": e.risco, "campo_da_abertura": None,
+                    "messages": [AIMessage(texto.RESPOSTA_RISCO[e.risco])],
+                    "eventos": _evento(estado, "guardrail", "bloqueado", risco=e.risco)}
         atualizacao = {**atualizar_fatos(estado, e, runtime.context.carregar(), mensagem=_texto_do_cliente(estado)),
-                       "campo_da_abertura": None}
+                       "campo_da_abertura": None, "risco": None if e.risco == "nenhum" else e.risco}
         atual = {**estado, **atualizacao}
         resultado = _resultado(atual, "contexto_relacionamento", "atualizar_fatos",
                                {"dados": atual["dados"], "despesas": atual["despesas"]},
@@ -499,6 +512,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
                     "correcao": estado.get("correcao"),
                     "dados_confirmados": estado["dados"],
                     "despesas_confirmadas": despesas_confirmadas(estado),
+                    "acolher": estado.get("risco") in ("aflicao", "crise"),
                 },
                 context=runtime.context,
                 config={"metadata": {"request_id": estado["request_id"], "turno_id": estado["turno_id"],
@@ -538,6 +552,10 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         evidencia_tools = {"resultados_tools": resultados_tools, "eventos": eventos, "plano_proposto": proposta,
                            "visuais": visuais_turno}
         final = next((m.text for m in reversed(novas) if isinstance(m, AIMessage) and m.text), "")
+        if not final.strip():  # resposta vazia (ex.: filtro de segurança do Gemini): o cliente recebe os números em texto fixo
+            logs.evento(log, "[AGENTE][GEMINI] resposta vazia; usando a resposta fixa", logging.WARNING, etapa=estado["etapa"])
+            return {**evidencia_tools, "rascunho": texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"]),
+                    "correcao": None, "modo_resposta": "fallback", "eventos": _evento({**estado, "eventos": eventos}, "conversa", "resposta_vazia")}
         chamadas = {tc["id"]: tc for m in novas if isinstance(m, AIMessage) for tc in m.tool_calls}
         for m in tools:
             tc = chamadas.get(m.tool_call_id, {"name": m.name, "args": {}})
@@ -548,7 +566,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         logs.evento(log, f"[AGENTE][GEMINI] respondeu em {_seg(_ms(inicio))} com {len(tools)} tool{'s' if len(tools) != 1 else ''}"
                     + (" (reescrita)" if estado.get("correcao") else ""), etapa=estado["etapa"], ms=_ms(inicio))
         c = estado["comparacao"]
-        if c["status"] == "insuficiente":
+        if c["status"] == "insuficiente" and estado.get("risco") != "crise":  # na crise, primeiro o acolhimento
             # O modelo responde à pergunta; o valor que falta vem sempre da regra.
             if _FALA_EM_SOBRA.search(final):
                 return {**evidencia_tools, "rascunho": texto.resposta_padrao(ctx, c, estado["dados_mudaram"]), "correcao": None,
@@ -571,15 +589,35 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         revisao = _revisao_atual(estado, ctx, request_id=runtime.context.request_id)
         if revisao["status"] != "pode_apresentar":
             return _recusar_resultado(estado, revisao, "revisao_texto", request_id=runtime.context.request_id)
-        fontes = [json.dumps(estado["comparacao"]), json.dumps(ctx.resumo()), json.dumps(estado["dados"]), *estado["fontes"]]
+        fontes = [json.dumps(estado["comparacao"]), json.dumps(ctx.resumo()), json.dumps(estado["dados"]), *estado["fontes"],
+                  *([texto.AVISO_CRISE] if estado.get("risco") == "crise" else [])]  # o CVV (188) que o agente cita
         suspeitos = numeros_sem_fonte(estado["rascunho"], fontes)
-        if not suspeitos:
+        problemas = problemas_na_resposta(estado["rascunho"])
+        apontado = None
+        # Juiz só nos casos delicados (crise, golpe): raros, e onde uma resposta ruim pesa mais.
+        if (not suspeitos and not problemas and julgar is not None and estado["reescritas"] == 0
+                and estado.get("risco") in ("crise", "golpe")):
+            veredito = julgar(_texto_do_cliente(estado), estado["rascunho"])
+            logs.evento(log, f"[AGENTE][GUARDRAIL] juiz {'aprovou' if veredito.aprovada else 'reprovou'} ({estado.get('risco')})",
+                        logging.INFO if veredito.aprovada else logging.WARNING, aprovada=veredito.aprovada)
+            if not veredito.aprovada:
+                apontado = veredito.problema or "tom ou conteúdo inadequado para o cliente"
+        if not suspeitos and not problemas and not apontado:
             return {**_revisado(estado, revisao, "revisao_texto"), "messages": [AIMessage(_com_pendencias(estado["rascunho"], estado))], "numeros_sem_fonte": []}
         reescritas = estado["reescritas"] + 1
-        logs.evento(log, f"[AGENTE][VALIDACAO] {len(suspeitos)} números sem fonte (tentativa {reescritas})", logging.WARNING,
-                    tentativa=reescritas, quantidade_suspeitos=len(suspeitos))
+        if suspeitos:
+            logs.evento(log, f"[AGENTE][VALIDACAO] {len(suspeitos)} números sem fonte (tentativa {reescritas})", logging.WARNING,
+                        tentativa=reescritas, quantidade_suspeitos=len(suspeitos))
+        if problemas:
+            logs.evento(log, f"[AGENTE][GUARDRAIL] saída: {', '.join(problemas)} (tentativa {reescritas})", logging.WARNING,
+                        tentativa=reescritas, problemas=problemas)
         if reescritas <= MAX_REESCRITAS:
-            correcao = f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. Reescreva usando só os números do cálculo e das tools."
+            correcao = " ".join([
+                *([f"Sua última resposta usou números que não vieram de nenhuma tool: {', '.join(suspeitos)}. "
+                   "Reescreva usando só os números do cálculo e das tools."] if suspeitos else []),
+                *(["Reescreva sua última resposta."] if (problemas or apontado) and not suspeitos else []),
+                *(CORRECOES[p] for p in problemas),
+                *([f"Um revisor apontou: {apontado}."] if apontado else [])])
             return {"reescritas": reescritas, "correcao": correcao}
         segura = texto.resposta_padrao(ctx, estado["comparacao"], estado["dados_mudaram"])
         return {"reescritas": reescritas, "messages": [AIMessage(_com_pendencias(segura, estado))], "numeros_sem_fonte": [],
@@ -664,6 +702,8 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
         return END if estado["etapa"] == "bloqueado" else "atualizar_estado"
 
     def dados_suficientes(estado: Estado, runtime: Runtime[Contexto]) -> str:
+        if estado["etapa"] == "bloqueado":
+            return END
         if _impeditivas(estado):
             return "perguntar_cliente"
         if estado.get("origem") and not aberturas.precisa_calculo(estado["origem"]):
@@ -710,7 +750,7 @@ def construir_grafo(modelo: Any = None, extrator: Extrator = extrair_por_regras,
     g.add_node("registrar_decisao", _com_log(registrar_decisao), destinations=("guardrail", END))
     g.add_edge(START, "guardrail")
     g.add_conditional_edges("guardrail", bloqueado, ["atualizar_estado", END])
-    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem"])
+    g.add_conditional_edges("atualizar_estado", dados_suficientes, ["calcular_opcoes", "perguntar_cliente", "responder_origem", END])
     g.add_edge("perguntar_cliente", END)
     g.add_edge("calcular_opcoes", "revisar_calculo")
     g.add_conditional_edges("revisar_calculo", escolheu, ["pedir_confirmacao", "responder_origem", "conversa", END])
@@ -750,6 +790,19 @@ class Turno:
     pendencias_informativas: list[str] = field(default_factory=list)
 
 
+def entrada_segura(mensagem: str | None) -> tuple[str | None, bool]:
+    """Cartão, CPF e senha saem da fala antes do LLM, dos logs, do checkpoint e do LangSmith."""
+    mascarada, ocultou = mascarar(mensagem) if mensagem else (mensagem, False)
+    if ocultou:
+        logs.evento(log, "[AGENTE][GUARDRAIL] dado sensível ocultado da mensagem", logging.WARNING)
+    return mascarada, ocultou
+
+
+def resposta_segura(resposta: str, estado: dict[str, Any], retomada: bool, ocultou: bool) -> str:
+    """Avisos de segurança do turno. Retomar uma confirmação não passa pela entrada: o risco é de antes."""
+    return texto.com_avisos(resposta, None if retomada else estado.get("risco"), ocultou)
+
+
 def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | None = None,
               origem: dict[str, str] | None = None, request_id: str | None = None) -> Turno:
     """Associa a sessão à identidade e serializa seus turnos no processo atual."""
@@ -768,6 +821,7 @@ def conversar(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | Non
 def _conversar_serializado(grafo: Any, ctx: ContextoCliente, sessao: str, mensagem: str | None,
                           origem: dict[str, str] | None, request_id: str) -> Turno:
     """Roda um turno. Se o grafo está parado pedindo confirmação, a mensagem retoma o interrupt."""
+    mensagem, ocultou = entrada_segura(mensagem)
     origem = origem or aberturas.origem_do_atalho(mensagem)
     pergunta = aberturas.pergunta(origem) if origem else None
     mensagem = pergunta or mensagem
@@ -791,6 +845,7 @@ def _conversar_serializado(grafo: Any, ctx: ContextoCliente, sessao: str, mensag
     interrupcoes = estado.get("__interrupt__") or []
     pedido = interrupcoes[0].value if interrupcoes else None
     resposta = pedido["pergunta"] if pedido else next(m.text for m in reversed(estado["messages"]) if isinstance(m, AIMessage))
+    resposta = resposta_segura(resposta, estado, retomada=bool(pendente), ocultou=ocultou)
     return Turno(
         resposta=resposta,
         etapa=estado.get("etapa", ""),
