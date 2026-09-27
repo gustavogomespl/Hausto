@@ -1,0 +1,228 @@
+.raiox-titulo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.raiox-titulo span {
+  font-size: 0.85rem;
+  color: var(--texto-2);
+}
+
+.raiox .aviso .aviso-selo {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.rx-cabeca-cartao {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--texto-2);
+  font-size: 0.95rem;
+}
+
+.rx-bandeira {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 30px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--fundo);
+}
+
+.rx-bandeira span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #eb3b2f;
+}
+
+.rx-bandeira span + span {
+  margin-left: -3px;
+  background: #f7a21b;
+}
+
+.rx-destaque {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.rx-destaque .valor {
+  font-size: 1.7rem;
+}
+
+.rx-destaque > span {
+  color: var(--texto-2);
+}
+
+.rx-detalhe {
+  margin: 6px 0 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--texto-2);
+}
+
+.rx-detalhe b {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.rx-linha-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--linha);
+  font-weight: 700;
+}
+
+.rx-mini .rx-valor {
+  font-size: 1.6rem;
+  margin-top: 8px;
+}
+
+/* Onde foi o dinheiro */
+.rx-categorias {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rx-categoria-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.rx-categoria-icone {
+  font-size: 1rem;
+}
+
+.rx-categoria-nome {
+  flex: 1;
+}
+
+.rx-barra {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--azul);
+}
+
+/* Compras parceladas */
+.rx-parcelas {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.rx-parcelas li + li {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--linha);
+}
+
+.rx-parcela-topo {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.rx-segmentos {
+  display: flex;
+  gap: 3px;
+}
+
+.rx-segmentos span {
+  flex: 1;
+  height: 8px;
+  background: var(--azul-claro);
+}
+
+.rx-segmentos span:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.rx-segmentos span:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.rx-segmentos span.pago {
+  background: var(--azul);
+}
+
+/* Como pagou as faturas */
+.rx-grafico {
+  display: flex;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.rx-coluna {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.rx-coluna-area {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 64px;
+  border-bottom: 1px solid var(--linha);
+}
+
+.rx-coluna-barra {
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+}
+
+.raiox .integral {
+  background: var(--verde);
+}
+
+.raiox .parcial {
+  background: var(--ambar);
+}
+
+.raiox .minimo {
+  background: var(--vermelho);
+}
+
+.rx-coluna-mes {
+  font-size: 0.72rem;
+  color: var(--texto-2);
+}
+
+.rx-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 0.85rem;
+  color: var(--texto-2);
+}
+
+.rx-legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rx-legenda i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+.rx-legenda b {
+  color: var(--texto);
+}

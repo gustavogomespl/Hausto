@@ -1,0 +1,40 @@
+.topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--laranja);
+  color: #fff;
+  padding: 18px var(--gutter) 46px;
+  margin-bottom: -28px;
+}
+
+.topo-avatar {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--texto);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.topo-icones {
+  display: flex;
+  gap: 18px;
+}
+
+.topo-icone {
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+/* Folha cinza que "sobe" sobre o laranja */
+.folha {
+  position: relative;
+  background: var(--fundo);
+  border-radius: 28px 28px 0 0;
+  min-height: 100%;
+}

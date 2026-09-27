@@ -1,0 +1,34 @@
+.tabbar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px calc(12px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid var(--linha);
+}
+
+.tabbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 56px;
+  border-radius: 18px;
+  color: var(--texto);
+  font-size: 0.72rem;
+  color: var(--texto-2);
+}
+
+.tabbar-item svg {
+  color: var(--texto);
+}
+
+.tabbar-item.ativa {
+  background: var(--marinho);
+}
+
+.tabbar-item.ativa svg {
+  color: #fff;
+}

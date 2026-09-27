@@ -54,6 +54,10 @@ class Estado(MessagesState):
     revisao: dict[str, Any]
     modo_resposta: str
     erro_calculo: str | None
+    origem: dict[str, str] | None  # aviso ou valor ✦ que abriu o chat neste turno
+    campo_da_abertura: str | None  # a abertura pediu um dado: vale só para a próxima mensagem
+    sugestoes: list[str]
+    ancora: dict[str, Any] | None
 
 
 class EstadoConversa(AgentState):

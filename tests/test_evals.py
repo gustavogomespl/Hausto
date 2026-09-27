@@ -147,8 +147,17 @@ def test_transcricao_para_o_juiz_mostra_rota_e_tools():
 # ------------------------------------------------------------------ testes do promptfoo
 
 
+def _qualquer_cliente(monkeypatch):
+    """A estrutura dos casos não depende de quais perfis o mock tem."""
+    from app.features import montar_contexto
+    from evals import gerar_testes
+
+    ctx = montar_contexto(REPO.transacoes(REPO.listar_clientes()[0]))
+    monkeypatch.setattr(gerar_testes, "escolher_cliente", lambda perfil, semente: ctx)
+
+
 def test_criar_testes_gera_30_casos_com_asserts(monkeypatch):
-    monkeypatch.setenv("FONTE_DADOS", "mock")
+    _qualquer_cliente(monkeypatch)
     monkeypatch.setenv("EVALS_JUIZ", "1")
     testes = criar_testes()
     assert len(testes) == 30
@@ -159,7 +168,7 @@ def test_criar_testes_gera_30_casos_com_asserts(monkeypatch):
 
 
 def test_sem_juiz_so_ficam_as_checagens(monkeypatch):
-    monkeypatch.setenv("FONTE_DADOS", "mock")
+    _qualquer_cliente(monkeypatch)
     monkeypatch.setenv("EVALS_JUIZ", "0")
     assert {a["type"] for t in criar_testes() for a in t["assert"]} == {"python"}
 

@@ -1,0 +1,27 @@
+.valor {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.valor-numero {
+  border-bottom: 2px dotted #b9bcc8;
+  padding-bottom: 1px;
+  line-height: 1.1;
+}
+
+.valor-brilho {
+  color: var(--laranja);
+  width: 0.45em;
+  height: 0.45em;
+  min-width: 9px;
+  min-height: 9px;
+  margin-top: -0.05em;
+}
+
+.valor:hover .valor-numero {
+  border-bottom-color: var(--laranja);
+}

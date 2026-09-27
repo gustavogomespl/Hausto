@@ -39,9 +39,28 @@ def escolha_incompativel(opcao: str, valor: float, c: dict[str, Any]) -> str:
     )
 
 
+def linhas_opcoes(c: dict[str, Any]) -> list[str]:
+    op = c["opcoes"]
+    linhas = []
+    for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"), ("minimo", "Pagar o mínimo")):
+        if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
+            continue  # o caixa cobre tudo: o parcial é o próprio integral
+        ok = "cabe no seu caixa" if op[nome]["atende_restricoes"] else "aperta os essenciais"
+        linhas.append(f"- {rotulo}: custo de {brl(op[nome]['custo_total'])} ({ok}).")
+    return linhas
+
+
+SUGESTOES = {
+    "explicar_opcoes": ["Quero pagar tudo", "E se eu pagar o mínimo?", "Aconteceu um imprevisto"],
+    "informar_deficit": ["Conferir meu saldo", "Rever a reserva", "Aconteceu um imprevisto"],
+    "escolha_incompativel": ["Conferir meu saldo", "Rever a reserva"],
+    "decisao_registrada": ["Minha fatura"],
+    "decisao_cancelada": ["Minha fatura", "Aconteceu um imprevisto"],
+}
+
+
 def resposta_padrao(ctx: ContextoCliente, c: dict[str, Any], dados_mudaram: bool = False) -> str:
     """O fluxo do diagrama em texto fixo: usada no modo simulado e como resposta segura."""
-    op = c["opcoes"]
     venc = ctx.proximo_vencimento.strftime("%d/%m")
     linhas = ["Com o dado que você trouxe, refiz as contas."] if dados_mudaram else []
     linhas += [
@@ -58,11 +77,7 @@ def resposta_padrao(ctx: ContextoCliente, c: dict[str, Any], dados_mudaram: bool
         linhas.append(f"Não dá para pagar nem o mínimo sem apertar os essenciais: faltam {brl(c['deficit_para_o_minimo'])}.")
         linhas.append("Qual informação precisamos confirmar para rever essa simulação?")
         return "\n".join(linhas)
-    for nome, rotulo in (("integral", "Pagar tudo"), ("parcial_viavel", f"Pagar {brl(op['parcial_viavel']['valor_pago'])}"), ("minimo", "Pagar o mínimo")):
-        if nome == "parcial_viavel" and op[nome]["valor_pago"] >= c["valor_fatura"]:
-            continue  # o caixa cobre tudo: o parcial é o próprio integral
-        ok = "cabe no seu caixa" if op[nome]["atende_restricoes"] else "aperta os essenciais"
-        linhas.append(f"- {rotulo}: custo de {brl(op[nome]['custo_total'])} ({ok}).")
+    linhas += linhas_opcoes(c)
     linhas.append(
         f"Nas premissas simuladas, {c['recomendada'].replace('_', ' ')} tem o menor custo entre as opções que cabem. "
         "Qual alternativa você quer entender melhor?"

@@ -1,0 +1,179 @@
+.onboarding {
+  background: var(--fundo);
+}
+
+.onb-topo {
+  background: var(--laranja);
+  color: #fff;
+  padding: 36px 24px 72px;
+  border-radius: 0 0 36px 36px;
+}
+
+.onb-marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.onb-logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--marinho);
+}
+
+.onb-selo {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.onb-topo h1 {
+  margin: 14px 0 8px;
+  font-size: 1.9rem;
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.onb-topo p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+  opacity: 0.95;
+}
+
+.onb-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: -44px;
+  padding: 0 20px;
+}
+
+.persona {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border-radius: var(--raio-card);
+  padding: 18px 18px 16px;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.persona.marcada {
+  border-color: var(--laranja);
+  box-shadow: 0 8px 22px rgba(242, 101, 34, 0.14);
+}
+
+.persona-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.persona-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+}
+
+.persona-nome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.persona-nome strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.persona-nome span {
+  font-size: 0.85rem;
+  color: var(--texto-2);
+}
+
+.persona-radio {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #d4d6dd;
+}
+
+.persona.marcada .persona-radio {
+  border: 7px solid var(--laranja);
+}
+
+.persona-frase {
+  margin: 14px 0 12px;
+  font-style: italic;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.persona-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--fundo);
+  color: var(--texto-2);
+  font-size: 0.8rem;
+}
+
+.tag-renda {
+  background: var(--laranja-claro);
+  color: var(--laranja);
+  font-weight: 700;
+}
+
+.onb-rodape {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 28px;
+}
+
+.onb-botao {
+  width: 100%;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--laranja);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.onb-botao:disabled {
+  background: #c9cbd2;
+}
+
+.onb-rodape small {
+  color: var(--texto-2);
+  font-size: 0.8rem;
+}
